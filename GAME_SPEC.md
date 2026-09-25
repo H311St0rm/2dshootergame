@@ -27,7 +27,8 @@ endlessly escalating threat.
 4. Player bullets kill enemies, which sometimes drop a pickup — either a one-time weapon upgrade or a holdable ability (see §8b and §8).
 5. Weapon-upgrade pickups apply immediately on contact and permanently boost the ship's fire rate/damage/spread; ability pickups are held in a single slot and activated with one key press.
 6. Difficulty (spawn rate, enemy speed, enemy variety) ramps up continuously with survival time.
-7. There is no separate HP stat — taking a hit costs weapon levels instead (see §8b). Run ends when a hit lands while at weapon level 0. Score = kills + survival time. High score is saved locally.
+7. Reach weapon level 10 and rack up 100 kills in a row without taking an unblocked hit, and a boss ("The Sentinel") shows up — or, as a fallback for a rougher run, simply reach 500 total kills regardless of level or damage taken. Either path can recur multiple times in one run — see §7b.
+8. There is no separate HP stat — taking a hit costs weapon levels instead (see §8b). Run ends when a hit lands while at weapon level 0. Score = kills + survival time. High score is saved locally.
 
 ## 3. Tech stack & project structure
 
@@ -52,6 +53,7 @@ src/
   entities/
     Player.js
     Enemy.js
+    Boss.js
     PlayerBullet.js
     EnemyBullet.js
     Pickup.js
@@ -60,6 +62,7 @@ src/
     DifficultyManager.js     # Tracks elapsed time, exposes current difficulty
     AbilityManager.js        # Holds current ability, handles activation/effects
     WeaponManager.js         # Tracks weapon level, fire stats, and the hit/level-loss/death rule (§8b)
+    BossManager.js           # Tracks both boss-trigger counters and runs the encounter (§7b)
     Starfield.js             # Parallax scrolling background
 ```
 
@@ -117,6 +120,37 @@ Enemy bullets: 6×6 px pixel dot, color matches firing enemy's palette (red/oran
 ### Spawning
 
 - `SpawnManager` picks uniformly at random among all currently-unlocked enemy types and spawns one at the current spawn interval (see §10 for how the interval shrinks over time).
+
+## 7b. Boss encounters
+
+A recurring boss fight with two independent trigger paths, so a clean/skilled run and a rougher one both eventually see one.
+
+### Triggers
+
+Track two counters, both starting at 0 when gameplay starts:
+
+- **`bossStreak`** — the "flawless streak." Increments by 1 for every enemy kill made while the player's weapon level is exactly 10 (max, per §8b). Resets to 0 the instant an **unblocked** hit lands (any hit that isn't absorbed by the Shield ability, §8) — since a hit at level 10 always drops the player to 7, any unblocked hit means the streak is broken. A Shield-blocked hit does **not** reset it. Triggers the boss at **100**.
+- **`totalKillsSinceLastBoss`** — a simple fallback counter. Increments by 1 for every enemy kill, regardless of weapon level or damage taken. Triggers the boss at **500**, so a run that keeps taking hits (and can never sustain the flawless streak) still guarantees a boss eventually.
+
+Whichever counter reaches its threshold first triggers the boss immediately. On trigger, **both** counters reset to 0, so the next boss (of either run) needs a fresh 100-streak or 500-kill count from that point.
+
+Bosses can recur any number of times in a single run if the player keeps re-qualifying by either path.
+
+### Boss encounter flow
+
+1. On trigger, all current on-screen regular enemies and their bullets are instantly cleared (no score awarded for the clear — it's just a clean transition into the fight).
+2. Regular enemy spawning (§7) pauses for the duration of the fight.
+3. The Sentinel enters from the top (y = -40), moving down to a hover position (y = 150) at 100 px/s, then holds there, moving side to side in a sine pattern (amplitude 150px, period 4s) for the rest of the fight.
+4. The Sentinel attacks on two independent timers:
+   - **Fan spread:** every 1.5s, fires a 7-bullet fan from −60° to +60° (relative to straight down), bullet speed 180 px/s.
+   - **Aimed burst:** every 4s, fires 3 bullets aimed at the player's current position, 0.15s apart, bullet speed 260 px/s.
+5. Touching the Sentinel's body applies the same universal hit rule as everything else (§8b) — no special-case damage.
+6. HP scales with how many Sentinels the player has already defeated this run: `3000 + 1500 * (bossIndex - 1)` (1st fight: 3000 HP, 2nd: 4500, 3rd: 6000, …).
+7. On defeat: a large explosion (scaled-up particle burst), award `500 * bossIndex` bonus score, and guarantee one Ability pickup drop at the death position (a Weapon Upgrade would be wasted if the player is already at level 10, so the Sentinel always drops an ability instead). Regular spawning resumes and `bossIndex` increments for next time.
+
+### Sentinel appearance
+
+- 64×64 px procedurally-generated pixel-art sprite (see §9), crimson `#c23b3b` body with darker `#7a1f1f` plating detail.
 
 ## 8. Abilities (consumable pickups)
 
@@ -190,6 +224,7 @@ All sprites are generated once at boot (`BootScene`) from small pixel-grid defin
 Required generated textures:
 - Player ship (24×24)
 - Enemy types A–D (16×16 / 18×18 / 18×18 / 28×28)
+- The Sentinel boss (64×64, see §7b)
 - Player bullet (4×10)
 - Enemy bullet (6×6)
 - 5 ability pickup icons (14×14 each, one per ability color above)
@@ -225,6 +260,8 @@ All bullets/enemies/pickups are destroyed and removed once they fully exit the s
 - **Top-right:** Live score, with "Best: N" high score directly beneath it.
 - **Bottom-center:** Ability slot box — empty/greyed outline when nothing held; filled with the held ability's icon + short label + a pulsing "[SPACE]" hint when something is held.
 - **Top-center (optional but recommended):** Survival timer as `mm:ss`.
+- **Below the survival timer, only while weapon level is 10:** the flawless-streak progress, e.g. "Streak: 67/100" (§7b).
+- **While a boss is active:** a boss HP bar spanning the top of the screen, labeled "THE SENTINEL", replacing the streak readout for the fight's duration.
 
 ## 13. Scoring & persistence
 
@@ -251,7 +288,7 @@ Simple, short procedurally-generated tones (e.g. via the Web Audio API or Phaser
 Do not implement any of the following — they are intentionally out of scope:
 
 - Mobile touch controls or gamepad support
-- Boss fights or scripted levels/waves with a defined end
+- Scripted levels/waves with a defined end (the boss in §7b is a recurring endless-mode event, not a level structure)
 - Multiple simultaneous ability slots (still just one at a time; weapon level already has its own cap of 10)
 - Multiplayer
 - Any save/meta-progression beyond the single high-score value
@@ -271,6 +308,11 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] Player can hold exactly one ability at a time (new ability pickups replace the held one) and activate it with Space for the correct effect and duration.
 - [ ] Taking a hit while weapon level > 0 removes 3 levels (clamped at 0) and applies the 0.4s i-frames with visible flicker; taking a hit while already at level 0 kills the player, triggering the explosion and Game Over transition.
 - [ ] Weapon level resets to 0 at the start of each new run.
+- [ ] Reaching weapon level 10 and getting 100 kills in a row without an unblocked hit triggers a boss; the streak resets on any unblocked hit but not on a Shield-blocked one.
+- [ ] Reaching 500 total kills (regardless of level or damage) also triggers a boss, as a fallback for runs that never sustain the flawless streak.
+- [ ] On trigger, both boss counters reset to 0, on-screen regular enemies/bullets are cleared, and regular spawning pauses until the boss is defeated.
+- [ ] The Sentinel fires its fan-spread and aimed-burst patterns on the correct timers and can be damaged/destroyed by player bullets using current weapon-level damage.
+- [ ] Defeating a boss awards `500 * bossIndex` bonus score, guarantees an ability drop, resumes normal spawning, and scales HP up (`3000 + 1500 * (bossIndex-1)`) for the next boss in the same run.
 - [ ] Difficulty visibly increases the longer the run lasts (denser spawns, faster enemies, new types unlocking).
 - [ ] Game Over screen shows final score + best score; retry restarts a fresh run.
 - [ ] High score persists across a full page reload.
