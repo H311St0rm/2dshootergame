@@ -120,7 +120,7 @@ Enemy bullets: 6×6 px pixel dot, color matches firing enemy's palette (red/oran
 
 ## 8. Abilities (consumable pickups)
 
-- Enemies destroyed by a **player bullet** (not by ramming — see §11) have a **15% chance** to drop a pickup at their death position.
+- Enemies destroyed by a **player bullet** (not by ramming — see §11) have a **3% chance** to drop an ability pickup at their death position. This roll is independent of the weapon-upgrade roll in §8b — see there for how the two combine.
 - Pickup: 14×14 px diamond/orb sprite, distinct color per ability (below), falls straight down at 60 px/s, despawns if it exits the bottom of the screen uncollected.
 - Player collects a pickup by touching it with their hitbox.
 - **Single ability slot.** The player holds at most one ability at a time. Collecting a new pickup while already holding one **replaces** the held ability (the old one is lost — no stacking, no queue).
@@ -142,11 +142,11 @@ This is a second, independent pickup track from the ability system in §8. It pe
 ### Upgrade pickups
 
 - 14×14 px gold (`#ffd700`) chevron/arrow-shaped pixel sprite — visually distinct from the diamond-shaped ability pickups. Falls straight down at 60 px/s, despawns off-screen if uncollected.
-- Drop roll happens on every **bullet-kill** (not ram-kills — same rule as ability drops, §11). Rolls are sequential and mutually exclusive so at most one pickup drops per kill:
+- Drop rolls happen on every **bullet-kill** (not ram-kills — same rule as ability drops, §11), and are **fully independent** of the ability-drop roll in §8:
   1. Roll 5% for a Weapon Upgrade drop.
-  2. If that fails, roll 15% for an Ability drop (§8).
-  3. If both fail, no drop.
-- Enemies killed by the Nova Bomb ability each roll independently using the same sequence above.
+  2. Separately, roll 3% for an Ability drop (§8).
+  3. Both can succeed on the same kill (0.15% of kills) — in that case, spawn both pickups at the death position, offset a few pixels apart horizontally so they don't overlap. Both can also both fail, in which case nothing drops.
+- Enemies killed by the Nova Bomb ability each roll independently using the same rules above.
 - Collecting an Upgrade pickup increases the player's weapon level by 1, up to a maximum of 10. Collecting one while already at level 10 has no further effect (the pickup is simply consumed).
 
 ### Weapon level table
@@ -266,7 +266,7 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] Ship moves smoothly with Arrow Keys and WASD, normalized diagonal speed, clamped to bounds.
 - [ ] Ship auto-fires continuously with no player input required.
 - [ ] All 4 enemy types appear, each gated by its correct unlock time, each with correct movement and (where applicable) firing behavior.
-- [ ] Player bullets damage/destroy enemies using the current weapon level's damage value, award correct score, and trigger the sequential 5% upgrade / 15% ability drop roll on bullet-kills only.
+- [ ] Player bullets damage/destroy enemies using the current weapon level's damage value, award correct score, and trigger the independent 5% upgrade / 3% ability drop rolls on bullet-kills only (both may drop from the same kill).
 - [ ] Collecting an Upgrade pickup increases weapon level (capped at 10) and visibly changes fire rate, damage, and bullet spread per the §8b table.
 - [ ] Player can hold exactly one ability at a time (new ability pickups replace the held one) and activate it with Space for the correct effect and duration.
 - [ ] Taking a hit while weapon level > 0 removes 3 levels (clamped at 0) and applies the 0.4s i-frames with visible flicker; taking a hit while already at level 0 kills the player, triggering the explosion and Game Over transition.
