@@ -26,7 +26,7 @@ endlessly escalating threat.
 3. Player moves freely with keyboard input to dodge enemy bodies and bullets.
 4. Player bullets kill enemies, which sometimes drop a pickup — either a one-time weapon upgrade or a holdable ability (see §8b and §8).
 5. Weapon-upgrade pickups apply immediately on contact and permanently boost the ship's fire rate/damage/spread; ability pickups are held in a single slot and activated with one key press.
-6. Difficulty (spawn rate, enemy speed, enemy variety) ramps up continuously with survival time.
+6. Difficulty ramps up on two separate tracks: enemy speed/bullet-speed/fire-frequency scale with survival time and permanently step up further with each boss defeated, while the number of enemies per wave scales (smoothly, never suddenly) with the player's current weapon level.
 7. Reach your weapon's max level and rack up 100 kills in a row without taking an unblocked hit, and a boss ("The Sentinel") shows up — or, as a fallback for a rougher run, simply reach 500 total kills regardless of level or damage taken. Either path can recur multiple times in one run — see §7b.
 8. There is no separate HP stat — taking a hit costs weapon levels instead (see §8b). Run ends when a hit lands while at the weapon's minimum level (0 to start). Score = kills + survival time. High score is saved locally.
 
@@ -58,8 +58,8 @@ src/
     EnemyBullet.js
     Pickup.js
   systems/
-    SpawnManager.js          # Decides what/when to spawn
-    DifficultyManager.js     # Tracks elapsed time, exposes current difficulty
+    SpawnManager.js          # Decides what/when/how many to spawn per wave
+    DifficultyManager.js     # Tracks elapsed time, bossBonusLevel, smoothedWeaponLevel, exposes both difficulty curves (§10)
     AbilityManager.js        # Holds current ability, handles activation/effects
     WeaponManager.js         # Tracks weapon level, fire stats, and the hit/level-loss/death rule (§8b)
     BossManager.js           # Tracks both boss-trigger counters and runs the encounter (§7b)
@@ -108,7 +108,7 @@ Movement is free 2D, not lane-based. Diagonal movement must be normalized so dia
 
 Four enemy types, unlocked progressively by elapsed survival time (unlock times are fixed regardless of difficulty level — see §10). All enemies spawn at y = -20 (just above the visible screen) at a random valid x within [24, 456], move downward, and are destroyed/removed once fully off-screen at the bottom (no score for enemies that escape off-screen).
 
-All Speed, Bullet speed, and Fire interval values below are **base** values — §10 scales all three up with the difficulty curve (which is itself tied to both elapsed time and the player's current weapon level).
+All Speed, Bullet speed, and Fire interval values below are **base** values — §10 scales all three up over time and with each boss defeated.
 
 | Type | Name | HP | Sprite | Move pattern | Base speed (down) | Fires? | Fire pattern (base interval, base bullet speed) | Score | Unlocks at |
 |---|---|---|---|---|---|---|---|---|---|
@@ -121,7 +121,7 @@ Enemy bullets: 6×6 px pixel dot, color matches firing enemy's palette (red/oran
 
 ### Spawning
 
-- `SpawnManager` picks uniformly at random among all currently-unlocked enemy types and spawns one at the current spawn interval (see §10 for how the interval shrinks over time).
+- `SpawnManager` fires a spawn wave at the current spawn interval (see §10 for how the interval shrinks over time). Each wave spawns `enemySpawnBatchSize` enemies (§10), each independently rolling its type uniformly at random among all currently-unlocked types.
 
 ## 7b. Boss encounters
 
@@ -148,7 +148,7 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
    - **Aimed burst:** every 4s, fires 3 bullets aimed at the player's current position, 0.15s apart, bullet speed 260 px/s.
 5. Touching the Sentinel's body applies the same universal hit rule as everything else (§8b) — no special-case damage.
 6. HP scales with how many Sentinels the player has already defeated this run: `3000 + 1500 * (bossIndex - 1)` (1st fight: 3000 HP, 2nd: 4500, 3rd: 6000, …).
-7. On defeat: a large explosion (scaled-up particle burst), award `500 * bossIndex` bonus score, and guarantee one Ability pickup drop at the death position (a Weapon Upgrade would be wasted if the player is already at level 10, so the Sentinel always drops an ability instead). Regular spawning resumes and `bossIndex` increments for next time.
+7. On defeat: a large explosion (scaled-up particle burst), award `500 * bossIndex` bonus score, permanently add **+3** to `bossBonusLevel` (§10 — this is what escalates enemy speed/bullet-speed/fire-frequency from here on, not weapon level), and guarantee one Ability pickup drop at the death position (a Weapon Upgrade would be wasted if the player is already at `weaponLevelMax`, so the Sentinel always drops an ability instead). Regular spawning resumes and `bossIndex` increments for next time.
 
 ### Sentinel appearance
 
@@ -254,17 +254,29 @@ Required generated textures:
 
 ## 10. Difficulty curve (endless survival)
 
-- Track `elapsedSurvivalSeconds` from the moment gameplay starts, plus the player's current `weaponLevel` (§8b).
+Two independent difficulty systems, driven by two different things: how long you've survived and how many bosses you've beaten drive how *fast and aggressive* enemies are; your current weapon level drives how *many* show up at once.
+
+### Speed / bullet-speed / fire-frequency (tied to time + boss defeats)
+
 - `timeDifficultyLevel = floor(elapsedSurvivalSeconds / 20)` (increases by 1 every 20 seconds).
-- `effectiveDifficultyLevel = timeDifficultyLevel + weaponLevel` — difficulty is tied to weapon level as well as time: the stronger the player currently is, the harder the game pushes back, and losing levels from taking hits eases it back off correspondingly.
+- `bossBonusLevel` starts at 0 and permanently increases by **+3** every time a boss is defeated (§7b) — it never decreases, regardless of weapon level or damage taken afterward.
+- `effectiveDifficultyLevel = timeDifficultyLevel + bossBonusLevel`. Note this is **not** tied to weapon level — losing/gaining weapon levels has no effect on this number.
 - `difficultyMultiplier = 1 + effectiveDifficultyLevel * 0.05` (a flat +5% per effective level). This single multiplier drives all three of the following:
   - **Enemy movement speed:** `baseSpeed * difficultyMultiplier`.
   - **Enemy bullet speed:** `baseBulletSpeed * difficultyMultiplier`.
   - **Enemy fire frequency:** effective fire interval = `baseFireInterval / difficultyMultiplier` (so higher difficulty means enemies shoot more often, not just faster bullets).
-- Spawn interval (seconds between enemy spawns): `max(0.45, 1.6 - effectiveDifficultyLevel * 0.12)`.
+- Spawn interval (seconds between enemy spawn waves): `max(0.45, 1.6 - effectiveDifficultyLevel * 0.12)`.
 - Enemy type unlocks are based on `elapsedSurvivalSeconds` directly (fixed thresholds in §7's table), independent of `effectiveDifficultyLevel`.
-- The Sentinel boss (§7b) is exempt from this curve entirely — its stats come only from the `bossIndex` formula in §7b, so the two scaling systems never stack on top of each other.
+- The Sentinel boss (§7b) is exempt from this curve entirely — its own stats come only from the `bossIndex` formula in §7b, so the two scaling systems never stack on top of each other.
 - There is no cap on `effectiveDifficultyLevel` for v1 — it keeps escalating for as long as the run continues.
+
+### Enemy count per wave (tied to weapon level, smoothed)
+
+- Track `smoothedWeaponLevel`, starting equal to `weaponLevel` (0) at run start.
+- Every **4 seconds**, `smoothedWeaponLevel` moves at most **1 level** toward the player's real, current `weaponLevel` — one step up if the real level is higher, one step down if it's lower, no change if they're equal. This is the step-up/step-down limiter: even if the real `weaponLevel` jumps around instantly (a hit, a pickup, a prestige), `smoothedWeaponLevel` only ever crawls toward it at this fixed rate, so enemy density never spikes or crashes suddenly.
+- `enemySpawnBatchSize = 1 + floor(smoothedWeaponLevel / 3)` (uncapped — matches the "no difficulty cap" philosophy of everything else in this doc).
+- Each time the spawn-interval timer above fires, spawn `enemySpawnBatchSize` enemies at once instead of always spawning exactly one — each rolls its type independently from the currently-unlocked pool (§7), at its own random x within [24, 456], keeping at least 40px of horizontal separation between enemies spawned in the same wave where possible (if the wave is too large to keep every pair separated, allow the overflow to overlap rather than failing to spawn).
+- `bossBonusLevel` and `smoothedWeaponLevel` both reset to 0 at the start of every new run.
 
 ## 11. Collision rules
 
@@ -338,7 +350,8 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] The Sentinel fires its fan-spread and aimed-burst patterns on the correct timers and can be damaged/destroyed by player bullets using current weapon-level damage.
 - [ ] Defeating a boss awards `500 * bossIndex` bonus score, guarantees an ability drop, resumes normal spawning, and scales HP up (`3000 + 1500 * (bossIndex-1)`) for the next boss in the same run.
 - [ ] A flawless boss kill while at `weaponLevelMax` also triggers the prestige reward (`weaponLevelMin += 5`, `weaponLevelMax += 5`, `weaponLevel -= 5`), stacking with (not replacing) the normal boss rewards, and this repeats correctly if the player prestiges more than once in a run.
-- [ ] Difficulty visibly increases the longer the run lasts and as weapon level rises (denser spawns, faster enemies, faster/more frequent enemy bullets), and eases off again if weapon level drops.
+- [ ] Enemy movement speed, bullet speed, and fire frequency all increase the longer the run lasts, and each boss defeat permanently bumps them further via `bossBonusLevel` (+3); none of this is affected by weapon level.
+- [ ] The number of enemies spawned per wave increases as `smoothedWeaponLevel` rises, and that value only ever moves 1 level every 4 seconds toward the real `weaponLevel` — a sudden weapon-level change (a hit, several pickups in a row, a prestige) never causes an instant jump or drop in enemy count.
 - [ ] Game Over screen shows final score + best score; retry restarts a fresh run.
 - [ ] High score persists across a full page reload.
 
