@@ -33,7 +33,7 @@ endlessly escalating threat.
 ## 3. Tech stack & project structure
 
 - **Engine:** Phaser 3 (latest 3.7x line), loaded via CDN `<script>` tag in `index.html`.
-- **No build step.** Plain JS files loaded as ES6 modules (`<script type="module">`). No npm install, no bundler, no TypeScript compile step required to run the game. Opening `index.html` in a browser (or serving the folder statically) must be enough to play.
+- **No build step.** Plain JS files loaded as ES6 modules (`<script type="module">`). No npm install, no bundler, no TypeScript compile step required to run the game. Serving the folder with any static file server (e.g. `python3 -m http.server`) must be enough to play — browsers refuse to load ES modules from `file://`, so double-clicking `index.html` is not supported.
 - **No external image/audio asset files.** All sprites are generated procedurally at runtime (see §9). This keeps the build 100% self-contained.
 - **Physics:** Phaser Arcade Physics.
 
@@ -45,11 +45,15 @@ src/
   main.js                 # Phaser game config, boots the scene list
   config/
     constants.js           # All tunable numbers from this doc, in one place
+    sprites.js             # Pixel-grid sprite definitions rendered by BootScene (§9)
   scenes/
     BootScene.js            # Generates all textures, then starts MenuScene
     MenuScene.js             # Title screen
     GameScene.js             # Main gameplay
+    PauseScene.js            # Pause overlay (§14)
     GameOverScene.js         # Death screen
+  ui/
+    Hud.js                   # All HUD elements (§12), banners and floating text
   entities/
     Player.js
     Enemy.js
@@ -64,6 +68,8 @@ src/
     WeaponManager.js         # Tracks weapon level, fire stats, and the hit/level-loss/death rule (§8b)
     BossManager.js           # Tracks both boss-trigger counters and runs the encounter (§7b)
     Starfield.js             # Parallax scrolling background
+    Sfx.js                   # Procedural Web Audio sound effects (§15)
+    highScore.js             # localStorage load/save, guarded for blocked storage (§13)
 ```
 
 ## 4. Screen & camera
@@ -117,7 +123,7 @@ All Speed, Bullet speed, and Fire interval values below are **base** values — 
 | C | Weaver | 2 | 18×18 purple `#b34dff` pixel ship | Down + horizontal sine wave, amplitude 60px, period 2s | 80 px/s vertical | Yes | 1 straight-down bullet, every 2.2s, bullet speed 200 px/s | 25 | 35s |
 | D | Bulwark | 5 | 28×28 dark-green `#3dbf5a` large pixel ship | Straight down, slow | 50 px/s | Yes | 3-bullet spread (−20°, 0°, +20° from straight down), every 2.5s, bullet speed 200 px/s | 50 | 60s |
 
-Enemy bullets: 6×6 px pixel dot, color matches firing enemy's palette (red/orange/purple accordingly). On hitting the player it triggers the weapon-level hit rule (§8b); the bullet is destroyed on player hit or off-screen.
+Enemy bullets: 6×6 px pixel dot with a bright core, rim color matching the firing enemy's palette (orange/purple/green; the Sentinel's are crimson). On hitting the player it triggers the weapon-level hit rule (§8b); the bullet is destroyed on player hit or off-screen.
 
 ### Spawning
 
@@ -147,7 +153,7 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
    - **Fan spread:** every 1.5s, fires a 7-bullet fan from −60° to +60° (relative to straight down), bullet speed 180 px/s.
    - **Aimed burst:** every 4s, fires 3 bullets aimed at the player's current position, 0.15s apart, bullet speed 260 px/s.
 5. Touching the Sentinel's body costs the player a hit under the same universal rule as everything else (§8b) — but unlike ramming a regular enemy (§11), this does **not** damage or destroy the Sentinel itself; only player bullets do.
-6. Ability interactions with the boss: **Nova Bomb does not affect the Sentinel** — it only destroys regular enemies and clears regular enemy bullets, so it can never instantly clear a boss fight. **Overdrive** (time slow) *does* apply to the Sentinel like any other enemy, slowing its movement and bullets to 40% speed. **Shield** and the fire-rate/spread abilities work exactly as normal during a boss fight.
+6. Ability interactions with the boss: **Nova Bomb does not damage the Sentinel** — it destroys regular enemies and clears every enemy bullet on screen (the Sentinel's included), but the boss itself is untouched, so it can never instantly clear a boss fight. **Overdrive** (time slow) *does* apply to the Sentinel like any other enemy, slowing its movement and bullets to 40% speed. **Shield** and the fire-rate/spread abilities work exactly as normal during a boss fight.
 7. HP scales with how many Sentinels the player has already defeated this run: `3000 + 1500 * (bossIndex - 1)` (1st fight: 3000 HP, 2nd: 4500, 3rd: 6000, …).
 8. On defeat: a large explosion (scaled-up particle burst), award `500 * bossIndex` bonus score, permanently add **+3** to `bossBonusLevel` (§10 — this is what escalates enemy speed/bullet-speed/fire-frequency from here on, not weapon level), and guarantee one Ability pickup drop at the death position (a Weapon Upgrade would be wasted if the player is already at `weaponLevelMax`, so the Sentinel always drops an ability instead). Regular spawning resumes and `bossIndex` increments for next time.
 
@@ -221,7 +227,7 @@ Damage, fire interval, and bullet pattern all come from the player's current lev
 
 ### Interaction with temporary abilities (§8)
 
-- **Rapid Fire** sets the fire interval to a flat 0.12s for its duration. This is always faster than every level's own interval (0.15s–0.35s), so it always takes effect regardless of current level.
+- **Rapid Fire** sets the fire interval to `min(levelInterval, 0.12s)` for its duration — a big boost at low levels, and never a downgrade at levels 12+ whose own interval is already faster than 0.12s.
 - **Spread Shot** sets the bullet pattern to the 3-way (−15°, 0°, +15°) spread for its duration — *unless* the player's current weapon level already fires 3 or more bullets (level 6+), in which case the level's own (equal-or-wider) pattern is kept instead, so the ability can never downgrade a high-level player.
 - Damage-per-bullet always comes from the current weapon level; neither ability changes it.
 - These two systems are otherwise fully independent: the single ability slot (§8) and the weapon level (this section) don't interact with or consume each other.
@@ -335,7 +341,7 @@ Do not implement any of the following — they are intentionally out of scope:
 
 ## 17. Definition of done (acceptance checklist)
 
-- [ ] `index.html` opens directly in a browser (or via a static file server) with zero build step and zero console errors.
+- [ ] Served from any static file server, `index.html` runs with zero build step and zero console errors.
 - [ ] Menu screen shows title, controls, best score, and a working start prompt.
 - [ ] Ship moves smoothly with Arrow Keys and WASD, normalized diagonal speed, clamped to bounds.
 - [ ] Ship auto-fires continuously with no player input required.
