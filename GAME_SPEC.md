@@ -146,9 +146,10 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
 4. The Sentinel attacks on two independent timers:
    - **Fan spread:** every 1.5s, fires a 7-bullet fan from −60° to +60° (relative to straight down), bullet speed 180 px/s.
    - **Aimed burst:** every 4s, fires 3 bullets aimed at the player's current position, 0.15s apart, bullet speed 260 px/s.
-5. Touching the Sentinel's body applies the same universal hit rule as everything else (§8b) — no special-case damage.
-6. HP scales with how many Sentinels the player has already defeated this run: `3000 + 1500 * (bossIndex - 1)` (1st fight: 3000 HP, 2nd: 4500, 3rd: 6000, …).
-7. On defeat: a large explosion (scaled-up particle burst), award `500 * bossIndex` bonus score, permanently add **+3** to `bossBonusLevel` (§10 — this is what escalates enemy speed/bullet-speed/fire-frequency from here on, not weapon level), and guarantee one Ability pickup drop at the death position (a Weapon Upgrade would be wasted if the player is already at `weaponLevelMax`, so the Sentinel always drops an ability instead). Regular spawning resumes and `bossIndex` increments for next time.
+5. Touching the Sentinel's body costs the player a hit under the same universal rule as everything else (§8b) — but unlike ramming a regular enemy (§11), this does **not** damage or destroy the Sentinel itself; only player bullets do.
+6. Ability interactions with the boss: **Nova Bomb does not affect the Sentinel** — it only destroys regular enemies and clears regular enemy bullets, so it can never instantly clear a boss fight. **Overdrive** (time slow) *does* apply to the Sentinel like any other enemy, slowing its movement and bullets to 40% speed. **Shield** and the fire-rate/spread abilities work exactly as normal during a boss fight.
+7. HP scales with how many Sentinels the player has already defeated this run: `3000 + 1500 * (bossIndex - 1)` (1st fight: 3000 HP, 2nd: 4500, 3rd: 6000, …).
+8. On defeat: a large explosion (scaled-up particle burst), award `500 * bossIndex` bonus score, permanently add **+3** to `bossBonusLevel` (§10 — this is what escalates enemy speed/bullet-speed/fire-frequency from here on, not weapon level), and guarantee one Ability pickup drop at the death position (a Weapon Upgrade would be wasted if the player is already at `weaponLevelMax`, so the Sentinel always drops an ability instead). Regular spawning resumes and `bossIndex` increments for next time.
 
 ### Sentinel appearance
 
@@ -156,13 +157,13 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
 
 ### Flawless prestige reward
 
-An extra, stackable reward on top of the normal boss-defeat rewards in step 7 above, for players who enter a boss fight already at their weapon cap and leave it without taking a single hit.
+An extra, stackable reward on top of the normal boss-defeat rewards in step 8 above, for players who enter a boss fight already at their weapon cap and leave it without taking a single hit.
 
 - **Condition:** the player takes zero hits for the entire duration of a boss fight (any boss, triggered via either path in §7b), **and** their weapon level equals their current `weaponLevelMax` at the moment the boss dies. (Since no regular enemies spawn during a boss fight, a flawless fight means the player's weapon level literally cannot have changed since the fight started — so this is equivalent to "you started the fight already at your cap and stayed there.")
 - **Effect:** `weaponLevelMin += 5`, `weaponLevelMax += 5`, `weaponLevel -= 5`. The first time this triggers (starting from the default 0–10 range), that's `weaponLevelMin: 0→5`, `weaponLevelMax: 10→15`, current level `10→5`.
 - This is a genuine, immediate power **dip** — level 5 is weaker than level 10 (§8b's table) — traded for a permanently higher ceiling (you can eventually out-power your old peak) and a permanently higher floor (you can never again be as fragile as the original level-0 state, since the minimum a hit can knock you down to keeps rising too).
 - This is **repeatable and uncapped**: if the player later flawlessly clears another boss while sitting exactly at their (now raised) `weaponLevelMax`, it triggers again with the same +5/+5/−5 shift, and so on indefinitely — fitting, since this whole game has no difficulty cap either.
-- This reward is independent of the guaranteed ability drop and bonus score from step 7 — a flawless max-level boss kill gives the player **both**.
+- This reward is independent of the guaranteed ability drop and bonus score from step 8 — a flawless max-level boss kill gives the player **both**.
 
 ## 8. Abilities (consumable pickups)
 
@@ -348,6 +349,7 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] Reaching 500 total kills (regardless of level or damage) also triggers a boss, as a fallback for runs that never sustain the flawless streak.
 - [ ] On trigger, both boss counters reset to 0, on-screen regular enemies/bullets are cleared, and regular spawning pauses until the boss is defeated.
 - [ ] The Sentinel fires its fan-spread and aimed-burst patterns on the correct timers and can be damaged/destroyed by player bullets using current weapon-level damage.
+- [ ] Touching the Sentinel costs the player a hit but does not damage the Sentinel itself; Nova Bomb has no effect on the Sentinel; Overdrive slows the Sentinel like any regular enemy.
 - [ ] Defeating a boss awards `500 * bossIndex` bonus score, guarantees an ability drop, resumes normal spawning, and scales HP up (`3000 + 1500 * (bossIndex-1)`) for the next boss in the same run.
 - [ ] A flawless boss kill while at `weaponLevelMax` also triggers the prestige reward (`weaponLevelMin += 5`, `weaponLevelMax += 5`, `weaponLevel -= 5`), stacking with (not replacing) the normal boss rewards, and this repeats correctly if the player prestiges more than once in a run.
 - [ ] Enemy movement speed, bullet speed, and fire frequency all increase the longer the run lasts, and each boss defeat permanently bumps them further via `bossBonusLevel` (+3); none of this is affected by weapon level.
