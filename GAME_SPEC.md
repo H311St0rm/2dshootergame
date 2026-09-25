@@ -27,8 +27,8 @@ endlessly escalating threat.
 4. Player bullets kill enemies, which sometimes drop a pickup — either a one-time weapon upgrade or a holdable ability (see §8b and §8).
 5. Weapon-upgrade pickups apply immediately on contact and permanently boost the ship's fire rate/damage/spread; ability pickups are held in a single slot and activated with one key press.
 6. Difficulty (spawn rate, enemy speed, enemy variety) ramps up continuously with survival time.
-7. Reach weapon level 10 and rack up 100 kills in a row without taking an unblocked hit, and a boss ("The Sentinel") shows up — or, as a fallback for a rougher run, simply reach 500 total kills regardless of level or damage taken. Either path can recur multiple times in one run — see §7b.
-8. There is no separate HP stat — taking a hit costs weapon levels instead (see §8b). Run ends when a hit lands while at weapon level 0. Score = kills + survival time. High score is saved locally.
+7. Reach your weapon's max level and rack up 100 kills in a row without taking an unblocked hit, and a boss ("The Sentinel") shows up — or, as a fallback for a rougher run, simply reach 500 total kills regardless of level or damage taken. Either path can recur multiple times in one run — see §7b.
+8. There is no separate HP stat — taking a hit costs weapon levels instead (see §8b). Run ends when a hit lands while at the weapon's minimum level (0 to start). Score = kills + survival time. High score is saved locally.
 
 ## 3. Tech stack & project structure
 
@@ -93,14 +93,14 @@ Movement is free 2D, not lane-based. Diagonal movement must be normalized so dia
 | Start position | x = 240 (center), y = 680 |
 | Movement bounds | x: [20, 460], y: [30, 770] |
 | Movement speed | 260 px/s |
-| Weapon level | 0–10, starts at 0 each run. Doubles as the player's life system — see §8b. |
+| Weapon level | 0–10 to start (range can permanently widen via the prestige reward in §7b), starts at 0 each run. Doubles as the player's life system — see §8b. |
 | Hit invincibility | 0.4s of i-frames after any hit (bullet or ram), purely to stop a single simultaneous multi-collision from registering as more than one hit. Sprite alpha flickers between 1.0 and 0.3 every 0.1s during i-frames. The Shield ability (§8) overrides this with full invulnerability. |
-| Death | Taking a hit while weapon level is already 0: explosion effect (§9), then transition to GameOverScene. Full rule in §8b. |
+| Death | Taking a hit while weapon level is already at `weaponLevelMin` (0 to start): explosion effect (§9), then transition to GameOverScene. Full rule in §8b. |
 
 ### Auto-fire (base weapon)
 
 - Fires automatically, no input needed, from the moment gameplay starts.
-- Fire interval, damage-per-bullet, and bullet spread are all driven by the player's current **weapon level** (0–10) — see the table in §8b. At level 0 this is 1 bullet straight up every 0.35s, damage 1 per bullet.
+- Fire interval, damage-per-bullet, and bullet spread are all driven by the player's current **weapon level** (0–10 to start, wider after a prestige — §7b) — see the table in §8b. At level 0 this is 1 bullet straight up every 0.35s, damage 1 per bullet.
 - Bullet: 4×10 px yellow (`#ffe14d`) pixel sprite, speed 480 px/s upward, destroyed off-screen or on enemy hit.
 - Temporary abilities (Rapid Fire, Spread Shot in §8) can further modify interval/spread on top of the current weapon level — §8b defines exactly how they combine.
 
@@ -108,12 +108,14 @@ Movement is free 2D, not lane-based. Diagonal movement must be normalized so dia
 
 Four enemy types, unlocked progressively by elapsed survival time (unlock times are fixed regardless of difficulty level — see §10). All enemies spawn at y = -20 (just above the visible screen) at a random valid x within [24, 456], move downward, and are destroyed/removed once fully off-screen at the bottom (no score for enemies that escape off-screen).
 
-| Type | Name | HP | Sprite | Move pattern | Speed (down) | Fires? | Fire pattern | Score | Unlocks at |
+All Speed, Bullet speed, and Fire interval values below are **base** values — §10 scales all three up with the difficulty curve (which is itself tied to both elapsed time and the player's current weapon level).
+
+| Type | Name | HP | Sprite | Move pattern | Base speed (down) | Fires? | Fire pattern (base interval, base bullet speed) | Score | Unlocks at |
 |---|---|---|---|---|---|---|---|---|---|
 | A | Drone | 1 | 16×16 red `#ff4d4d` blocky pixel ship | Straight down | 90 px/s | No | — | 10 | 0s (from run start) |
-| B | Gunner | 2 | 18×18 orange `#ff9640` pixel ship | Straight down | 70 px/s | Yes | 1 aimed bullet at player's current position every 1.8s, bullet speed 220 px/s | 20 | 15s |
-| C | Weaver | 2 | 18×18 purple `#b34dff` pixel ship | Down + horizontal sine wave, amplitude 60px, period 2s | 80 px/s vertical | Yes | 1 straight-down bullet every 2.2s | 25 | 35s |
-| D | Bulwark | 5 | 28×28 dark-green `#3dbf5a` large pixel ship | Straight down, slow | 50 px/s | Yes | 3-bullet spread (−20°, 0°, +20° from straight down) every 2.5s, bullet speed 200 px/s | 50 | 60s |
+| B | Gunner | 2 | 18×18 orange `#ff9640` pixel ship | Straight down | 70 px/s | Yes | 1 bullet aimed at player's current position, every 1.8s, bullet speed 220 px/s | 20 | 15s |
+| C | Weaver | 2 | 18×18 purple `#b34dff` pixel ship | Down + horizontal sine wave, amplitude 60px, period 2s | 80 px/s vertical | Yes | 1 straight-down bullet, every 2.2s, bullet speed 200 px/s | 25 | 35s |
+| D | Bulwark | 5 | 28×28 dark-green `#3dbf5a` large pixel ship | Straight down, slow | 50 px/s | Yes | 3-bullet spread (−20°, 0°, +20° from straight down), every 2.5s, bullet speed 200 px/s | 50 | 60s |
 
 Enemy bullets: 6×6 px pixel dot, color matches firing enemy's palette (red/orange/purple accordingly). On hitting the player it triggers the weapon-level hit rule (§8b); the bullet is destroyed on player hit or off-screen.
 
@@ -129,7 +131,7 @@ A recurring boss fight with two independent trigger paths, so a clean/skilled ru
 
 Track two counters, both starting at 0 when gameplay starts:
 
-- **`bossStreak`** — the "flawless streak." Increments by 1 for every enemy kill made while the player's weapon level is exactly 10 (max, per §8b). Resets to 0 the instant an **unblocked** hit lands (any hit that isn't absorbed by the Shield ability, §8) — since a hit at level 10 always drops the player to 7, any unblocked hit means the streak is broken. A Shield-blocked hit does **not** reset it. Triggers the boss at **100**.
+- **`bossStreak`** — the "flawless streak." Increments by 1 for every enemy kill made while the player's weapon level equals their current `weaponLevelMax` (§8b; starts at 10). Resets to 0 the instant an **unblocked** hit lands (any hit that isn't absorbed by the Shield ability, §8) — since a hit at max level always drops the player below it, any unblocked hit means the streak is broken. A Shield-blocked hit does **not** reset it. Triggers the boss at **100**.
 - **`totalKillsSinceLastBoss`** — a simple fallback counter. Increments by 1 for every enemy kill, regardless of weapon level or damage taken. Triggers the boss at **500**, so a run that keeps taking hits (and can never sustain the flawless streak) still guarantees a boss eventually.
 
 Whichever counter reaches its threshold first triggers the boss immediately. On trigger, **both** counters reset to 0, so the next boss (of either run) needs a fresh 100-streak or 500-kill count from that point.
@@ -151,6 +153,16 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
 ### Sentinel appearance
 
 - 64×64 px procedurally-generated pixel-art sprite (see §9), crimson `#c23b3b` body with darker `#7a1f1f` plating detail.
+
+### Flawless prestige reward
+
+An extra, stackable reward on top of the normal boss-defeat rewards in step 7 above, for players who enter a boss fight already at their weapon cap and leave it without taking a single hit.
+
+- **Condition:** the player takes zero hits for the entire duration of a boss fight (any boss, triggered via either path in §7b), **and** their weapon level equals their current `weaponLevelMax` at the moment the boss dies. (Since no regular enemies spawn during a boss fight, a flawless fight means the player's weapon level literally cannot have changed since the fight started — so this is equivalent to "you started the fight already at your cap and stayed there.")
+- **Effect:** `weaponLevelMin += 5`, `weaponLevelMax += 5`, `weaponLevel -= 5`. The first time this triggers (starting from the default 0–10 range), that's `weaponLevelMin: 0→5`, `weaponLevelMax: 10→15`, current level `10→5`.
+- This is a genuine, immediate power **dip** — level 5 is weaker than level 10 (§8b's table) — traded for a permanently higher ceiling (you can eventually out-power your old peak) and a permanently higher floor (you can never again be as fragile as the original level-0 state, since the minimum a hit can knock you down to keeps rising too).
+- This is **repeatable and uncapped**: if the player later flawlessly clears another boss while sitting exactly at their (now raised) `weaponLevelMax`, it triggers again with the same +5/+5/−5 shift, and so on indefinitely — fitting, since this whole game has no difficulty cap either.
+- This reward is independent of the guaranteed ability drop and bonus score from step 7 — a flawless max-level boss kill gives the player **both**.
 
 ## 8. Abilities (consumable pickups)
 
@@ -181,11 +193,11 @@ This is a second, independent pickup track from the ability system in §8. It pe
   2. Separately, roll 3% for an Ability drop (§8).
   3. Both can succeed on the same kill (0.15% of kills) — in that case, spawn both pickups at the death position, offset a few pixels apart horizontally so they don't overlap. Both can also both fail, in which case nothing drops.
 - Enemies killed by the Nova Bomb ability each roll independently using the same rules above.
-- Collecting an Upgrade pickup increases the player's weapon level by 1, up to a maximum of 10. Collecting one while already at level 10 has no further effect (the pickup is simply consumed).
+- Collecting an Upgrade pickup increases the player's weapon level by 1, up to the current `weaponLevelMax` (starts at 10 — see the Prestige rule in §7b for how this can rise). Collecting one while already at `weaponLevelMax` has no further effect (the pickup is simply consumed).
 
 ### Weapon level table
 
-Damage, fire interval, and bullet pattern all come from the player's current level. Bullet angles are measured from straight up (0°).
+Damage, fire interval, and bullet pattern all come from the player's current level. Bullet angles are measured from straight up (0°). The table below covers levels 0–15 (the range after one prestige — §7b); if the player prestiges again beyond 15, continue the same trend for the implementer's own judgment: fire interval keeps dropping by 0.02s per level down to a floor of 0.05s, damage keeps adding +1 every 2 levels, and bullet count keeps widening to a new, wider tier roughly every 3–4 levels.
 
 | Level | Fire interval | Damage / bullet | Bullets (angles) |
 |---|---|---|---|
@@ -199,7 +211,12 @@ Damage, fire interval, and bullet pattern all come from the player's current lev
 | 7 | 0.21s | 4 | 3 (−15°, 0°, +15°) |
 | 8 | 0.19s | 5 | 3 (−15°, 0°, +15°) |
 | 9 | 0.17s | 5 | 5 (−25°, −12°, 0°, +12°, +25°) |
-| 10 (max) | 0.15s | 6 | 5 (−25°, −12°, 0°, +12°, +25°) |
+| 10 (original max) | 0.15s | 6 | 5 (−25°, −12°, 0°, +12°, +25°) |
+| 11 | 0.13s | 6 | 5 (−25°, −12°, 0°, +12°, +25°) |
+| 12 | 0.11s | 7 | 7 (−35°, −22°, −10°, 0°, +10°, +22°, +35°) |
+| 13 | 0.09s | 7 | 7 (−35°, −22°, −10°, 0°, +10°, +22°, +35°) |
+| 14 | 0.07s | 8 | 7 (−35°, −22°, −10°, 0°, +10°, +22°, +35°) |
+| 15 (max after 1st prestige) | 0.05s | 8 | 7 (−35°, −22°, −10°, 0°, +10°, +22°, +35°) |
 
 ### Interaction with temporary abilities (§8)
 
@@ -212,10 +229,12 @@ Damage, fire interval, and bullet pattern all come from the player's current lev
 
 Every hit — whether from an enemy bullet or from ramming an enemy body — costs exactly the same thing: weapon levels, not HP. There is no per-enemy or per-source damage variance ("any hit does the same damage").
 
-- If the player's weapon level is **greater than 0** when hit: `level = max(0, level - 3)`. The player survives (subject to the 0.4s hit-invincibility in §6), but permanently loses the fire-rate/damage/spread that came with those levels until more upgrades are collected.
-- If the player's weapon level is **already 0** when hit: there are no levels left to remove, so the hit kills the player instead.
+The player has a `weaponLevelMin` (starts at 0) and `weaponLevelMax` (starts at 10) for the run — both normally fixed, but both can rise via the Prestige reward in §7b.
+
+- If the player's weapon level is **greater than `weaponLevelMin`** when hit: `level = max(weaponLevelMin, level - 3)`. The player survives (subject to the 0.4s hit-invincibility in §6), but permanently loses the fire-rate/damage/spread that came with those levels until more upgrades are collected.
+- If the player's weapon level is **already at `weaponLevelMin`** when hit: there are no levels left to remove, so the hit kills the player instead.
 - The Shield ability (§8) fully blocks this — no level loss and no death while Shield is active.
-- Weapon level resets to 0 at the start of every new run (it is not a persistent meta-progression stat).
+- `weaponLevel` resets to 0, and `weaponLevelMin`/`weaponLevelMax` reset to 0/10, at the start of every new run (none of this is persistent meta-progression).
 
 ## 9. Visual generation (procedural pixel art)
 
@@ -235,12 +254,17 @@ Required generated textures:
 
 ## 10. Difficulty curve (endless survival)
 
-- Track `elapsedSurvivalSeconds` from the moment gameplay starts.
-- `difficultyLevel = floor(elapsedSurvivalSeconds / 20)` (increases by 1 every 20 seconds).
-- Spawn interval (seconds between enemy spawns): `max(0.45, 1.6 - difficultyLevel * 0.12)`.
-- Global enemy speed multiplier applied to all enemy movement speeds: `1 + difficultyLevel * 0.05`.
-- Enemy type unlocks are based on `elapsedSurvivalSeconds` directly (fixed thresholds in §7's table), independent of `difficultyLevel`.
-- There is no difficulty cap for v1 — it keeps escalating until the player dies.
+- Track `elapsedSurvivalSeconds` from the moment gameplay starts, plus the player's current `weaponLevel` (§8b).
+- `timeDifficultyLevel = floor(elapsedSurvivalSeconds / 20)` (increases by 1 every 20 seconds).
+- `effectiveDifficultyLevel = timeDifficultyLevel + weaponLevel` — difficulty is tied to weapon level as well as time: the stronger the player currently is, the harder the game pushes back, and losing levels from taking hits eases it back off correspondingly.
+- `difficultyMultiplier = 1 + effectiveDifficultyLevel * 0.05` (a flat +5% per effective level). This single multiplier drives all three of the following:
+  - **Enemy movement speed:** `baseSpeed * difficultyMultiplier`.
+  - **Enemy bullet speed:** `baseBulletSpeed * difficultyMultiplier`.
+  - **Enemy fire frequency:** effective fire interval = `baseFireInterval / difficultyMultiplier` (so higher difficulty means enemies shoot more often, not just faster bullets).
+- Spawn interval (seconds between enemy spawns): `max(0.45, 1.6 - effectiveDifficultyLevel * 0.12)`.
+- Enemy type unlocks are based on `elapsedSurvivalSeconds` directly (fixed thresholds in §7's table), independent of `effectiveDifficultyLevel`.
+- The Sentinel boss (§7b) is exempt from this curve entirely — its stats come only from the `bossIndex` formula in §7b, so the two scaling systems never stack on top of each other.
+- There is no cap on `effectiveDifficultyLevel` for v1 — it keeps escalating for as long as the run continues.
 
 ## 11. Collision rules
 
@@ -250,17 +274,17 @@ Required generated textures:
 | Player ↔ Enemy body ("ramming") | Player takes a hit per the weapon-level rule in §8b (subject to i-frames); enemy is also destroyed and explodes, but awards **no score** and **no pickup drop** (shooting enemies down is the intended, rewarded playstyle; ramming is a fallback that costs the player). |
 | Player ↔ Enemy bullet | Player takes a hit per the weapon-level rule in §8b (subject to i-frames); bullet destroyed. |
 | Player ↔ Ability pickup | Collected into the ability slot per §8's replace rule; pickup removed; small collect flash. |
-| Player ↔ Upgrade pickup | Weapon level +1 (max 10) per §8b; pickup removed; small collect flash. |
+| Player ↔ Upgrade pickup | Weapon level +1 (capped at `weaponLevelMax`) per §8b; pickup removed; small collect flash. |
 
 All bullets/enemies/pickups are destroyed and removed once they fully exit the screen bounds (with a small margin) to avoid unbounded object growth.
 
 ## 12. HUD
 
-- **Top-left:** Weapon Level meter — 10 small pip segments, filled left-to-right up to the current level (0 filled means the next hit is lethal). This single meter replaces a traditional health bar; see §8b.
+- **Top-left:** Weapon Level meter — a bar filled to `(weaponLevel - weaponLevelMin) / (weaponLevelMax - weaponLevelMin)`, labeled with the exact numeric level (e.g. "LVL 8"). Empty means the next hit is lethal. Using a fraction rather than fixed pips means it reads correctly even after the range widens via a prestige (§7b). This single meter replaces a traditional health bar; see §8b.
 - **Top-right:** Live score, with "Best: N" high score directly beneath it.
 - **Bottom-center:** Ability slot box — empty/greyed outline when nothing held; filled with the held ability's icon + short label + a pulsing "[SPACE]" hint when something is held.
 - **Top-center (optional but recommended):** Survival timer as `mm:ss`.
-- **Below the survival timer, only while weapon level is 10:** the flawless-streak progress, e.g. "Streak: 67/100" (§7b).
+- **Below the survival timer, only while weapon level equals `weaponLevelMax`:** the flawless-streak progress, e.g. "Streak: 67/100" (§7b).
 - **While a boss is active:** a boss HP bar spanning the top of the screen, labeled "THE SENTINEL", replacing the streak readout for the fight's duration.
 
 ## 13. Scoring & persistence
@@ -289,7 +313,7 @@ Do not implement any of the following — they are intentionally out of scope:
 
 - Mobile touch controls or gamepad support
 - Scripted levels/waves with a defined end (the boss in §7b is a recurring endless-mode event, not a level structure)
-- Multiple simultaneous ability slots (still just one at a time; weapon level already has its own cap of 10)
+- Multiple simultaneous ability slots (still just one at a time; weapon level already has its own — rising — cap, see §7b/§8b)
 - Multiplayer
 - Any save/meta-progression beyond the single high-score value
 - Story, dialogue, or cutscenes
@@ -304,16 +328,17 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] Ship auto-fires continuously with no player input required.
 - [ ] All 4 enemy types appear, each gated by its correct unlock time, each with correct movement and (where applicable) firing behavior.
 - [ ] Player bullets damage/destroy enemies using the current weapon level's damage value, award correct score, and trigger the independent 5% upgrade / 3% ability drop rolls on bullet-kills only (both may drop from the same kill).
-- [ ] Collecting an Upgrade pickup increases weapon level (capped at 10) and visibly changes fire rate, damage, and bullet spread per the §8b table.
+- [ ] Collecting an Upgrade pickup increases weapon level (capped at the current `weaponLevelMax`) and visibly changes fire rate, damage, and bullet spread per the §8b table.
 - [ ] Player can hold exactly one ability at a time (new ability pickups replace the held one) and activate it with Space for the correct effect and duration.
-- [ ] Taking a hit while weapon level > 0 removes 3 levels (clamped at 0) and applies the 0.4s i-frames with visible flicker; taking a hit while already at level 0 kills the player, triggering the explosion and Game Over transition.
-- [ ] Weapon level resets to 0 at the start of each new run.
-- [ ] Reaching weapon level 10 and getting 100 kills in a row without an unblocked hit triggers a boss; the streak resets on any unblocked hit but not on a Shield-blocked one.
+- [ ] Taking a hit while weapon level > `weaponLevelMin` removes 3 levels (clamped at `weaponLevelMin`) and applies the 0.4s i-frames with visible flicker; taking a hit while already at `weaponLevelMin` kills the player, triggering the explosion and Game Over transition.
+- [ ] `weaponLevel`, `weaponLevelMin` (0), and `weaponLevelMax` (10) all reset at the start of each new run.
+- [ ] Reaching `weaponLevelMax` and getting 100 kills in a row without an unblocked hit triggers a boss; the streak resets on any unblocked hit but not on a Shield-blocked one.
 - [ ] Reaching 500 total kills (regardless of level or damage) also triggers a boss, as a fallback for runs that never sustain the flawless streak.
 - [ ] On trigger, both boss counters reset to 0, on-screen regular enemies/bullets are cleared, and regular spawning pauses until the boss is defeated.
 - [ ] The Sentinel fires its fan-spread and aimed-burst patterns on the correct timers and can be damaged/destroyed by player bullets using current weapon-level damage.
 - [ ] Defeating a boss awards `500 * bossIndex` bonus score, guarantees an ability drop, resumes normal spawning, and scales HP up (`3000 + 1500 * (bossIndex-1)`) for the next boss in the same run.
-- [ ] Difficulty visibly increases the longer the run lasts (denser spawns, faster enemies, new types unlocking).
+- [ ] A flawless boss kill while at `weaponLevelMax` also triggers the prestige reward (`weaponLevelMin += 5`, `weaponLevelMax += 5`, `weaponLevel -= 5`), stacking with (not replacing) the normal boss rewards, and this repeats correctly if the player prestiges more than once in a run.
+- [ ] Difficulty visibly increases the longer the run lasts and as weapon level rises (denser spawns, faster enemies, faster/more frequent enemy bullets), and eases off again if weapon level drops.
 - [ ] Game Over screen shows final score + best score; retry restarts a fresh run.
 - [ ] High score persists across a full page reload.
 
