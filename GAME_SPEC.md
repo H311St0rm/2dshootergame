@@ -272,10 +272,10 @@ Two independent difficulty systems, driven by two different things: how long you
 
 ### Enemy count per wave (tied to weapon level, smoothed)
 
-- Track `smoothedWeaponLevel`, starting equal to `weaponLevel` (0) at run start.
-- Every **4 seconds**, `smoothedWeaponLevel` moves at most **1 level** toward the player's real, current `weaponLevel` — one step up if the real level is higher, one step down if it's lower, no change if they're equal. This is the step-up/step-down limiter: even if the real `weaponLevel` jumps around instantly (a hit, a pickup, a prestige), `smoothedWeaponLevel` only ever crawls toward it at this fixed rate, so enemy density never spikes or crashes suddenly.
-- `enemySpawnBatchSize = 1 + floor(smoothedWeaponLevel / 3)` (uncapped — matches the "no difficulty cap" philosophy of everything else in this doc).
-- Each time the spawn-interval timer above fires, spawn `enemySpawnBatchSize` enemies at once instead of always spawning exactly one — each rolls its type independently from the currently-unlocked pool (§7), at its own random x within [24, 456], keeping at least 40px of horizontal separation between enemies spawned in the same wave where possible (if the wave is too large to keep every pair separated, allow the overflow to overlap rather than failing to spawn).
+- Track `smoothedWeaponLevel`, starting equal to `weaponLevel` (0) at run start. There is no separate timer for this — it steps in lockstep with the spawn-wave cadence above.
+- Each time the spawn-interval timer fires (i.e., once per wave), **before** spawning, `smoothedWeaponLevel` moves at most **1 level** toward the player's real, current `weaponLevel` — one step up if the real level is higher, one step down if it's lower, no change if they're equal. This is the step-up/step-down limiter: even if the real `weaponLevel` jumps around instantly (a hit, a pickup, a prestige), `smoothedWeaponLevel` only ever crawls toward it one step per wave, so enemy density never spikes or crashes suddenly. (Since the spawn interval itself shrinks as difficulty rises, waves — and so this smoothing — get more frequent later in a run, which is intended.)
+- `enemySpawnBatchSize = 1 + floor(smoothedWeaponLevel / 3)`, computed from the just-updated `smoothedWeaponLevel` (uncapped — matches the "no difficulty cap" philosophy of everything else in this doc).
+- That same wave then spawns `enemySpawnBatchSize` enemies at once instead of always spawning exactly one — each rolls its type independently from the currently-unlocked pool (§7), at its own random x within [24, 456], keeping at least 40px of horizontal separation between enemies spawned in the same wave where possible (if the wave is too large to keep every pair separated, allow the overflow to overlap rather than failing to spawn).
 - `bossBonusLevel` and `smoothedWeaponLevel` both reset to 0 at the start of every new run.
 
 ## 11. Collision rules
@@ -351,7 +351,7 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] Defeating a boss awards `500 * bossIndex` bonus score, guarantees an ability drop, resumes normal spawning, and scales HP up (`3000 + 1500 * (bossIndex-1)`) for the next boss in the same run.
 - [ ] A flawless boss kill while at `weaponLevelMax` also triggers the prestige reward (`weaponLevelMin += 5`, `weaponLevelMax += 5`, `weaponLevel -= 5`), stacking with (not replacing) the normal boss rewards, and this repeats correctly if the player prestiges more than once in a run.
 - [ ] Enemy movement speed, bullet speed, and fire frequency all increase the longer the run lasts, and each boss defeat permanently bumps them further via `bossBonusLevel` (+3); none of this is affected by weapon level.
-- [ ] The number of enemies spawned per wave increases as `smoothedWeaponLevel` rises, and that value only ever moves 1 level every 4 seconds toward the real `weaponLevel` — a sudden weapon-level change (a hit, several pickups in a row, a prestige) never causes an instant jump or drop in enemy count.
+- [ ] The number of enemies spawned per wave increases as `smoothedWeaponLevel` rises, and that value only ever moves 1 level per wave toward the real `weaponLevel` — a sudden weapon-level change (a hit, several pickups in a row, a prestige) never causes an instant jump or drop in enemy count.
 - [ ] Game Over screen shows final score + best score; retry restarts a fresh run.
 - [ ] High score persists across a full page reload.
 
