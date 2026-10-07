@@ -81,8 +81,9 @@ __exports.game = game;
 },
 "src/scenes/BootScene.js": function (__exports) {
 'use strict';
-const { ABILITIES, ABILITY_KEYS, BARRIER } = __require('src/config/constants.js');
+const { ABILITIES, ABILITY_KEYS, BARRIER, ART_HD_SCALE } = __require('src/config/constants.js');
 const { SPRITES, ENEMY_BULLET_SHAPE, ENEMY_BULLET_COLORS, ABILITY_GLYPHS } = __require('src/config/sprites.js');
+const { ART } = __require('src/config/art.js');
 
 function expandRows(def) {
   if (!def.mirror) return def.rows;
@@ -121,6 +122,66 @@ function abilityIconRows(glyph) {
   return rows;
 }
 
+// Loads with a plain Image rather than Phaser's loader, which rejects the embedded data: URLs
+// that the single-file build (tools/build-standalone.mjs) swaps in for each file path.
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+function makeCanvas(width, height, smooth) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  context.imageSmoothingEnabled = smooth;
+  context.imageSmoothingQuality = 'high';
+  return { canvas, context };
+}
+
+// Resamples a drawing into a width×height canvas, keeping its proportions, centered. Smooth
+// downscaling halves in steps first, so thin lines survive a large reduction.
+function fitImage(image, width, height, smooth) {
+  const scale = Math.min(width / image.width, height / image.height);
+  const targetW = Math.max(1, Math.round(image.width * scale));
+  const targetH = Math.max(1, Math.round(image.height * scale));
+  let source = image;
+  while (smooth && source.width / 2 >= targetW && source.height / 2 >= targetH) {
+    const half = makeCanvas(Math.ceil(source.width / 2), Math.ceil(source.height / 2), true);
+    half.context.drawImage(source, 0, 0, half.canvas.width, half.canvas.height);
+    source = half.canvas;
+  }
+  const out = makeCanvas(width, height, smooth);
+  out.context.drawImage(source, Math.round((width - targetW) / 2), Math.round((height - targetH) / 2), targetW, targetH);
+  return out.canvas;
+}
+
+// Swaps in every drawn sprite from art.js (§9b). Each is baked at its in-game size under the
+// pixel-art key, so hitboxes, scales and previews keep working, plus an ART_HD_SCALE copy
+// under `<key>_hd` for screens that show a sprite large. A file that fails to load keeps its pixel art.
+function applyDrawnSprites(textures) {
+  return Promise.all(Object.entries(ART).map(([key, entry]) => loadImage(entry.file).then(
+    (image) => {
+      if (!textures.exists(key)) {
+        console.warn(`art.js: there is no sprite called "${key}"`);
+        return;
+      }
+      const frame = textures.getFrame(key);
+      const [width, height] = entry.size ?? [frame.width, frame.height];
+      const smooth = entry.smooth !== false;
+      textures.remove(key);
+      textures.addCanvas(key, fitImage(image, width, height, smooth));
+      const hd = textures.addCanvas(`${key}_hd`, fitImage(image, width * ART_HD_SCALE, height * ART_HD_SCALE, smooth));
+      if (smooth) hd.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    },
+    () => console.warn(`art.js: could not load ${entry.file}, keeping the pixel-art "${key}"`),
+  )));
+}
+
 class BootScene extends Phaser.Scene {
   constructor() {
     super('BootScene');
@@ -145,7 +206,8 @@ class BootScene extends Phaser.Scene {
     this.drawBarrierRing();
     this.drawFlash();
 
-    this.scene.start('MenuScene');
+    // Drawn sprites replace their pixel-art versions; the menu waits until they've loaded or failed.
+    applyDrawnSprites(this.textures).then(() => this.scene.start('MenuScene'));
   }
 
   drawGrid(key, rows, palette, scale) {
@@ -564,6 +626,10 @@ const EXPLOSION = {
   bossBurstInterval: 90,
 };
 
+// Drawn sprites (§9b) are also baked at this multiple of their in-game size as `<key>_hd`,
+// for the start screen's enlarged ship.
+const ART_HD_SCALE = 4;
+
 const TIMING = {
   deathToGameOverMs: 1200,
   gameOverInputDelayMs: 500,
@@ -602,6 +668,7 @@ __exports.SURVIVAL_GOLD = SURVIVAL_GOLD;
 __exports.BARRIER = BARRIER;
 __exports.HANGAR = HANGAR;
 __exports.EXPLOSION = EXPLOSION;
+__exports.ART_HD_SCALE = ART_HD_SCALE;
 __exports.TIMING = TIMING;
 },
 "src/config/sprites.js": function (__exports) {
@@ -891,10 +958,28 @@ __exports.ENEMY_BULLET_SHAPE = ENEMY_BULLET_SHAPE;
 __exports.ENEMY_BULLET_COLORS = ENEMY_BULLET_COLORS;
 __exports.ABILITY_GLYPHS = ABILITY_GLYPHS;
 },
+"src/config/art.js": function (__exports) {
+'use strict';
+// Drawn sprites (§9b). Each entry swaps one generated pixel-art texture for an image file;
+// anything not listed here, or whose file fails to load, keeps its pixel art.
+//   key     the texture it replaces: 'player', 'enemy_drone', 'boss_sentinel', ...
+//           (the full list, with sizes, is in assets/sprites/README.md)
+//   file    the image, relative to index.html, e.g. 'assets/sprites/player.png'
+//   size    optional [width, height] in game pixels; defaults to the pixel-art sprite's size.
+//           Hitboxes are set separately, so a larger drawing doesn't change collisions.
+//   smooth  optional; false for pixel art drawn at its exact in-game size, to keep hard edges
+//
+// Example:
+//   player: { file: 'assets/sprites/player.png' },
+// Keep this file plain data: tools/build-standalone.mjs reads it to embed each image.
+const ART = {};
+
+__exports.ART = ART;
+},
 "src/scenes/MenuScene.js": function (__exports) {
 'use strict';
 const {
-  TITLE, GAME_WIDTH, DEPTH, WEAPONS, WEAPON_ORDER, SECONDARIES, SECONDARY_ORDER,
+  TITLE, GAME_WIDTH, DEPTH, WEAPONS, WEAPON_ORDER, SECONDARIES, SECONDARY_ORDER, ART_HD_SCALE,
 } = __require('src/config/constants.js');
 const Starfield = __require('src/systems/Starfield.js').default;
 const Sfx = __require('src/systems/Sfx.js').default;
@@ -942,7 +1027,11 @@ class MenuScene extends Phaser.Scene {
     this.primaryPreview = this.add.container(0, 0).setDepth(DEPTH.hud);
     this.shipGroup = this.add.container(CX, SHIP_Y).setDepth(DEPTH.hud);
     this.secondaryPreview = this.add.container(0, 0);
-    this.shipGroup.add([this.secondaryPreview, this.add.image(0, 0, 'player').setScale(SHIP_SCALE)]);
+    // A drawn ship (§9b) shows from its sharper large copy; the pixel-art one scales up as is.
+    const ship = this.textures.exists('player_hd')
+      ? this.add.image(0, 0, 'player_hd').setScale(SHIP_SCALE / ART_HD_SCALE)
+      : this.add.image(0, 0, 'player').setScale(SHIP_SCALE);
+    this.shipGroup.add([this.secondaryPreview, ship]);
     this.tweens.add({ targets: this.shipGroup, y: SHIP_Y - 6, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
 
     this.rowUi = {

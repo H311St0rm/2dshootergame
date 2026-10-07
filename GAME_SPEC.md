@@ -36,8 +36,8 @@ fight alongside the ship automatically (§20).
 ## 3. Tech stack & project structure
 
 - **Engine:** Phaser 3 (latest 3.7x line), loaded via CDN `<script>` tag in `index.html`.
-- **No build step.** Plain JS files loaded as ES6 modules (`<script type="module">`). No npm install, no bundler, no TypeScript compile step required to run the game. Serving the folder with any static file server (e.g. `python3 -m http.server`) must be enough to play — browsers refuse to load ES modules from `file://`, so double-clicking `index.html` is not supported. For sharing, `node tools/build-standalone.mjs` (Node 18+, internet once to fetch the pinned Phaser) writes `StellarDodge.html`: the whole game, Phaser included, in one file that does run when double-clicked, offline. Rebuild it after changing the game.
-- **No external image/audio asset files.** All sprites are generated procedurally at runtime (see §9). This keeps the build 100% self-contained.
+- **No build step.** Plain JS files loaded as ES6 modules (`<script type="module">`). No npm install, no bundler, no TypeScript compile step required to run the game. Serving the folder with any static file server (e.g. `python3 -m http.server`) must be enough to play — browsers refuse to load ES modules from `file://`, so double-clicking `index.html` is not supported. For sharing, `node tools/build-standalone.mjs` (Node 18+, internet once to fetch the pinned Phaser) writes `StellarDodge.html`: the whole game, Phaser and any drawn sprites included, in one file that does run when double-clicked, offline. Rebuild it after changing the game or its art.
+- **Procedural art by default.** Every sprite is generated at runtime (see §9), so the game needs no image or audio files. Drawn sprites can replace any of them one at a time (§9b); anything not drawn keeps its generated version.
 - **Physics:** Phaser Arcade Physics.
 
 ### File structure
@@ -46,12 +46,15 @@ fight alongside the ship automatically (§20).
 index.html
 StellarDodge.html          # Generated single-file build for sharing (tools/build-standalone.mjs)
 tools/
-  build-standalone.mjs     # Bundles index.html + src/ + Phaser into StellarDodge.html
+  build-standalone.mjs     # Bundles index.html + src/ + Phaser + drawn sprites into StellarDodge.html
+assets/
+  sprites/                 # Drawn sprites (§9b); README.md there is the brief for artists
 src/
   main.js                 # Phaser game config, boots the scene list
   config/
     constants.js           # All tunable numbers from this doc, in one place
     sprites.js             # Pixel-grid sprite definitions rendered by BootScene (§9)
+    art.js                 # Drawn sprites that replace generated ones (§9b)
   scenes/
     BootScene.js            # Generates all textures, then starts MenuScene
     MenuScene.js             # Start screen with weapon select (§19)
@@ -275,6 +278,16 @@ Required generated textures:
 - A small square particle (4×4, white) reused (tinted per-enemy-color) for explosion bursts
 
 **Explosion effect:** on any enemy or player death, emit 8–12 of the particle squares outward from the death position at random angles/speeds, tinted to the destroyed entity's main color, fading out over 0.4s.
+
+## 9b. Drawn sprites
+
+Any generated texture can be replaced by a drawing, one sprite at a time, without touching game code. `assets/sprites/README.md` is the brief for artists (orientation, sizes, hitboxes, colors).
+
+- **Manifest:** `src/config/art.js` maps a texture key to an image file, e.g. `player: { file: 'assets/sprites/player.png' }`, with optional `size: [w, h]` (game pixels; defaults to the generated sprite's size) and `smooth: false` (for pixel art drawn at its exact in-game size). It stays plain data so the build script can read it.
+- **Loading:** after generating every texture, `BootScene` loads each listed image with a plain `Image` (Phaser 3.70's loader rejects `data:` URLs) and only then starts the menu. A file that fails to load, or a key with no generated texture, logs a console warning and keeps the pixel art.
+- **Baking:** each drawing is resampled once, proportions kept and centered, into a canvas texture at its in-game size under the original key, so hitboxes, scales and previews behave exactly as with the pixel art. Large reductions halve in steps first so thin lines survive. A second copy at 4× (`<key>_hd`, linear filtering) serves screens that show a sprite enlarged: the start screen's ship uses `player_hd` when present.
+- **Hitboxes stay separate:** collision sizes come from §6/§7/§19, never from the image, so a drawing with a `size` override looks larger without changing gameplay.
+- **Running:** served over HTTP (a local server or GitHub Pages) the images load from `assets/sprites/`. The single-file build replaces each path in `art.js` with the image as a `data:` URL, so double-clicking it still works offline; the build stops with a clear message if a listed file is missing.
 
 ## 10. Difficulty curve (endless survival)
 

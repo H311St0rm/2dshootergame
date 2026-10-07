@@ -1,5 +1,5 @@
 import {
-  TITLE, GAME_WIDTH, DEPTH, WEAPONS, WEAPON_ORDER, SECONDARIES, SECONDARY_ORDER,
+  TITLE, GAME_WIDTH, DEPTH, WEAPONS, WEAPON_ORDER, SECONDARIES, SECONDARY_ORDER, ART_HD_SCALE,
 } from '../config/constants.js';
 import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
@@ -47,7 +47,11 @@ export default class MenuScene extends Phaser.Scene {
     this.primaryPreview = this.add.container(0, 0).setDepth(DEPTH.hud);
     this.shipGroup = this.add.container(CX, SHIP_Y).setDepth(DEPTH.hud);
     this.secondaryPreview = this.add.container(0, 0);
-    this.shipGroup.add([this.secondaryPreview, this.add.image(0, 0, 'player').setScale(SHIP_SCALE)]);
+    // A drawn ship (§9b) shows from its sharper large copy; the pixel-art one scales up as is.
+    const ship = this.textures.exists('player_hd')
+      ? this.add.image(0, 0, 'player_hd').setScale(SHIP_SCALE / ART_HD_SCALE)
+      : this.add.image(0, 0, 'player').setScale(SHIP_SCALE);
+    this.shipGroup.add([this.secondaryPreview, ship]);
     this.tweens.add({ targets: this.shipGroup, y: SHIP_Y - 6, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
 
     this.rowUi = {

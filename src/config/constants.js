@@ -367,6 +367,10 @@ export const EXPLOSION = {
   bossBurstInterval: 90,
 };
 
+// Drawn sprites (§9b) are also baked at this multiple of their in-game size as `<key>_hd`,
+// for the start screen's enlarged ship.
+export const ART_HD_SCALE = 4;
+
 export const TIMING = {
   deathToGameOverMs: 1200,
   gameOverInputDelayMs: 500,

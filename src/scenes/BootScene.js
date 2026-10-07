@@ -1,5 +1,6 @@
-import { ABILITIES, ABILITY_KEYS, BARRIER } from '../config/constants.js';
+import { ABILITIES, ABILITY_KEYS, BARRIER, ART_HD_SCALE } from '../config/constants.js';
 import { SPRITES, ENEMY_BULLET_SHAPE, ENEMY_BULLET_COLORS, ABILITY_GLYPHS } from '../config/sprites.js';
+import { ART } from '../config/art.js';
 
 function expandRows(def) {
   if (!def.mirror) return def.rows;
@@ -38,6 +39,66 @@ function abilityIconRows(glyph) {
   return rows;
 }
 
+// Loads with a plain Image rather than Phaser's loader, which rejects the embedded data: URLs
+// that the single-file build (tools/build-standalone.mjs) swaps in for each file path.
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+}
+
+function makeCanvas(width, height, smooth) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  context.imageSmoothingEnabled = smooth;
+  context.imageSmoothingQuality = 'high';
+  return { canvas, context };
+}
+
+// Resamples a drawing into a width×height canvas, keeping its proportions, centered. Smooth
+// downscaling halves in steps first, so thin lines survive a large reduction.
+function fitImage(image, width, height, smooth) {
+  const scale = Math.min(width / image.width, height / image.height);
+  const targetW = Math.max(1, Math.round(image.width * scale));
+  const targetH = Math.max(1, Math.round(image.height * scale));
+  let source = image;
+  while (smooth && source.width / 2 >= targetW && source.height / 2 >= targetH) {
+    const half = makeCanvas(Math.ceil(source.width / 2), Math.ceil(source.height / 2), true);
+    half.context.drawImage(source, 0, 0, half.canvas.width, half.canvas.height);
+    source = half.canvas;
+  }
+  const out = makeCanvas(width, height, smooth);
+  out.context.drawImage(source, Math.round((width - targetW) / 2), Math.round((height - targetH) / 2), targetW, targetH);
+  return out.canvas;
+}
+
+// Swaps in every drawn sprite from art.js (§9b). Each is baked at its in-game size under the
+// pixel-art key, so hitboxes, scales and previews keep working, plus an ART_HD_SCALE copy
+// under `<key>_hd` for screens that show a sprite large. A file that fails to load keeps its pixel art.
+function applyDrawnSprites(textures) {
+  return Promise.all(Object.entries(ART).map(([key, entry]) => loadImage(entry.file).then(
+    (image) => {
+      if (!textures.exists(key)) {
+        console.warn(`art.js: there is no sprite called "${key}"`);
+        return;
+      }
+      const frame = textures.getFrame(key);
+      const [width, height] = entry.size ?? [frame.width, frame.height];
+      const smooth = entry.smooth !== false;
+      textures.remove(key);
+      textures.addCanvas(key, fitImage(image, width, height, smooth));
+      const hd = textures.addCanvas(`${key}_hd`, fitImage(image, width * ART_HD_SCALE, height * ART_HD_SCALE, smooth));
+      if (smooth) hd.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    },
+    () => console.warn(`art.js: could not load ${entry.file}, keeping the pixel-art "${key}"`),
+  )));
+}
+
 export default class BootScene extends Phaser.Scene {
   constructor() {
     super('BootScene');
@@ -62,7 +123,8 @@ export default class BootScene extends Phaser.Scene {
     this.drawBarrierRing();
     this.drawFlash();
 
-    this.scene.start('MenuScene');
+    // Drawn sprites replace their pixel-art versions; the menu waits until they've loaded or failed.
+    applyDrawnSprites(this.textures).then(() => this.scene.start('MenuScene'));
   }
 
   drawGrid(key, rows, palette, scale) {

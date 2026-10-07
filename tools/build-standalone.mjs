@@ -1,15 +1,37 @@
-// Builds StellarDodge.html: the whole game, Phaser included, in one file that runs when
-// opened straight from disk (browsers refuse to load separate ES module files from file://).
+// Builds StellarDodge.html: the whole game, Phaser and drawn sprites included, in one file
+// that runs when opened straight from disk (browsers refuse to load separate ES module and
+// image files from file://).
 // Usage, from the repo root: node tools/build-standalone.mjs
 // Needs Node 18+ and internet access once, to download the pinned Phaser build.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, posix } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, extname, join, posix } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'StellarDodge.html');
 const ENTRY = 'src/main.js';
 const PHASER_CDN = 'https://cdn.jsdelivr.net/npm/phaser@3.70.0';
+const ART_MODULE = 'src/config/art.js';
+const IMAGE_TYPES = { '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif' };
+const { ART } = await import(pathToFileURL(join(ROOT, ART_MODULE)).href);
+
+// Each drawn sprite's path in art.js becomes a data: URL holding the image itself (§9b).
+function embedArt(src) {
+  for (const [key, { file }] of Object.entries(ART)) {
+    const type = IMAGE_TYPES[extname(file).toLowerCase()];
+    if (!type) throw new Error(`art.js "${key}": ${file} is not a PNG, WebP, JPEG or GIF`);
+    let data;
+    try {
+      data = readFileSync(join(ROOT, file)).toString('base64');
+    } catch {
+      throw new Error(`art.js "${key}": ${file} not found`);
+    }
+    const quoted = new RegExp(`(['"])${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\1`, 'g');
+    if (!src.match(quoted)) throw new Error(`art.js "${key}": write the path as a plain quoted string`);
+    src = src.replace(quoted, () => JSON.stringify(`data:${type};base64,${data}`));
+  }
+  return src;
+}
 
 // Each ES module becomes a function in a small CommonJS-style registry. The game only uses
 // `import X from`, `import { a, b } from`, `export const|function|class` and
@@ -20,6 +42,7 @@ function load(id) {
   if (modules.has(id)) return;
   modules.set(id, null);
   let src = readFileSync(join(ROOT, id), 'utf8');
+  if (id === ART_MODULE) src = embedArt(src);
   const resolve = (spec) => posix.normalize(posix.join(posix.dirname(id), spec));
   const deps = [];
   const exported = [];
@@ -90,4 +113,5 @@ if (!phaserTag.test(html) || !entryTag.test(html)) throw new Error('index.html: 
 html = html.replace(phaserTag, () => `<script>\n${phaserNotice}\n${phaser}\n</script>`);
 html = html.replace(entryTag, () => `<script>\n${bundle}\n</script>`);
 writeFileSync(OUT, html);
-console.log(`StellarDodge.html: ${modules.size} modules, ${(html.length / 1024 / 1024).toFixed(2)} MB`);
+const drawn = Object.keys(ART).length;
+console.log(`StellarDodge.html: ${modules.size} modules, ${drawn} drawn sprite${drawn === 1 ? '' : 's'}, ${(html.length / 1024 / 1024).toFixed(2)} MB`);
