@@ -1,4 +1,4 @@
-import { ABILITIES, ABILITY_KEYS } from '../config/constants.js';
+import { ABILITIES, ABILITY_KEYS, BARRIER } from '../config/constants.js';
 import { SPRITES, ENEMY_BULLET_SHAPE, ENEMY_BULLET_COLORS, ABILITY_GLYPHS } from '../config/sprites.js';
 
 function expandRows(def) {
@@ -59,6 +59,7 @@ export default class BootScene extends Phaser.Scene {
     }
 
     this.drawShieldRing();
+    this.drawBarrierRing();
     this.drawFlash();
 
     this.scene.start('MenuScene');
@@ -85,6 +86,16 @@ export default class BootScene extends Phaser.Scene {
     g.lineStyle(1, 0xe8fdff, 0.6);
     g.strokeCircle(20, 20, 15);
     g.generateTexture('shield_ring', 40, 40);
+    g.destroy();
+  }
+
+  drawBarrierRing() {
+    const g = this.make.graphics({ x: 0, y: 0, add: false });
+    g.lineStyle(1, BARRIER.color, 0.9);
+    g.strokeCircle(17, 17, 15);
+    g.lineStyle(1, BARRIER.color, 0.4);
+    g.strokeCircle(17, 17, 13);
+    g.generateTexture('barrier_ring', 34, 34);
     g.destroy();
   }
 

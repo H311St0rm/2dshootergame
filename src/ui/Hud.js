@@ -3,7 +3,7 @@ import { TIMED_ABILITIES } from '../systems/AbilityManager.js';
 
 const METER = { x: 12, y: 30, width: 128, height: 8 };
 const BOSS_BAR = { x: 40, y: 68, width: 400, height: 8 };
-const SLOT = { x: GAME_WIDTH / 2, y: GAME_HEIGHT - 26, size: 36 };
+const SLOT = { x: GAME_WIDTH / 2, y: GAME_HEIGHT - 26, size: 36, gap: 8 };
 const EFFECT = { x: 18, y: GAME_HEIGHT - 20, rowGap: 20, barWidth: 56, barHeight: 5 };
 
 const COLORS = {
@@ -23,8 +23,12 @@ function formatTime(seconds) {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
+export function formatGold(value) {
+  return Math.floor(value).toLocaleString('en-US');
+}
+
 export default class Hud {
-  constructor(scene) {
+  constructor(scene, slotCount) {
     this.scene = scene;
     this.clock = 0;
     const add = scene.add;
@@ -33,9 +37,10 @@ export default class Hud {
 
     this.levelText = text(METER.x, 8, 16, '#4de3ff');
     this.rangeText = text(METER.x + METER.width + 6, METER.y + METER.height / 2, 10, '#7fa9b5', 0, 0.5);
+    this.weaponText = text(METER.x, METER.y + METER.height + 4, 10, '#7fa9b5');
     this.meter = add.graphics().setDepth(DEPTH.hud);
 
-    this.scoreText = text(GAME_WIDTH - 12, 8, 16, '#ffffff', 1);
+    this.goldText = text(GAME_WIDTH - 12, 8, 16, '#ffd700', 1);
     this.bestText = text(GAME_WIDTH - 12, 28, 11, '#9aa4b5', 1);
 
     this.timerText = text(GAME_WIDTH / 2, 8, 16, '#ffffff', 0.5);
@@ -44,10 +49,15 @@ export default class Hud {
     this.bossLabel = text(GAME_WIDTH / 2, BOSS_BAR.y - 16, 11, '#ff8a7a', 0.5).setText(BOSS.name);
     this.bossBar = add.graphics().setDepth(DEPTH.hud);
 
+    // Slot 1 fires next; with two slots, slot 2 sits to its right, dimmed, as the queued one.
+    const step = SLOT.size + SLOT.gap;
+    this.slotCenters = Array.from({ length: slotCount }, (_, i) => SLOT.x + (i - (slotCount - 1) / 2) * step);
+    const firstX = this.slotCenters[0];
+    const lastX = this.slotCenters[slotCount - 1];
     this.slotBox = add.graphics().setDepth(DEPTH.hud);
-    this.slotIcon = add.image(SLOT.x, SLOT.y, 'pickup_shield').setScale(2).setDepth(DEPTH.hud + 1);
-    this.slotName = text(SLOT.x - SLOT.size / 2 - 8, SLOT.y, 12, '#ffffff', 1, 0.5);
-    this.slotHint = text(SLOT.x + SLOT.size / 2 + 8, SLOT.y, 12, '#ffffff', 0, 0.5).setText('[SPACE]');
+    this.slotIcons = this.slotCenters.map((x) => add.image(x, SLOT.y, 'pickup_shield').setScale(2).setDepth(DEPTH.hud + 1));
+    this.slotName = text(firstX - SLOT.size / 2 - 8, SLOT.y, 12, '#ffffff', 1, 0.5);
+    this.slotHint = text(lastX + SLOT.size / 2 + 8, SLOT.y, 12, '#ffffff', 0, 0.5).setText('[SPACE]');
 
     this.effectBars = add.graphics().setDepth(DEPTH.hud);
     this.effectIcons = Object.fromEntries(
@@ -59,8 +69,9 @@ export default class Hud {
     this.clock += dt;
     this.drawWeaponMeter(state);
 
-    this.scoreText.setText(`SCORE ${state.score}`);
-    this.bestText.setText(`BEST ${Math.max(state.best, state.score)}`);
+    this.goldText.setText(`GOLD ${formatGold(state.gold)}`);
+    this.bestText.setText(`BEST RUN ${formatGold(Math.max(state.best, state.gold))}`);
+    this.weaponText.setText(state.weaponName);
     this.timerText.setText(formatTime(state.elapsed));
 
     const showStreak = state.atMax && !state.bossActive;
@@ -68,7 +79,7 @@ export default class Hud {
     if (showStreak) this.streakText.setText(`STREAK ${state.streak}/${BOSS.streakTarget}`);
 
     this.drawBossBar(state);
-    this.drawAbilitySlot(state.held);
+    this.drawAbilitySlots(state.abilities.slots);
     this.drawActiveEffects(state.abilities);
   }
 
@@ -115,21 +126,27 @@ export default class Hud {
     g.strokeRect(BOSS_BAR.x - 0.5, BOSS_BAR.y - 0.5, BOSS_BAR.width + 1, BOSS_BAR.height + 1);
   }
 
-  drawAbilitySlot(held) {
+  drawAbilitySlots(slots) {
     const g = this.slotBox;
     const half = SLOT.size / 2;
     g.clear();
-    g.fillStyle(0x000000, 0.45);
-    g.fillRect(SLOT.x - half, SLOT.y - half, SLOT.size, SLOT.size);
-    g.lineStyle(2, held ? 0xffffff : 0x55606e, held ? 0.9 : 0.6);
-    g.strokeRect(SLOT.x - half, SLOT.y - half, SLOT.size, SLOT.size);
+    this.slotCenters.forEach((x, i) => {
+      const kind = slots[i];
+      const isNext = i === 0;
+      g.fillStyle(0x000000, 0.45);
+      g.fillRect(x - half, SLOT.y - half, SLOT.size, SLOT.size);
+      g.lineStyle(2, kind && isNext ? 0xffffff : 0x55606e, kind ? 0.9 : 0.6);
+      g.strokeRect(x - half, SLOT.y - half, SLOT.size, SLOT.size);
+      const icon = this.slotIcons[i];
+      icon.setVisible(Boolean(kind));
+      if (kind) icon.setTexture(`pickup_${kind}`).setAlpha(isNext ? 1 : 0.55);
+    });
 
-    this.slotIcon.setVisible(Boolean(held));
-    this.slotName.setVisible(Boolean(held));
-    this.slotHint.setVisible(Boolean(held));
-    if (!held) return;
-    this.slotIcon.setTexture(`pickup_${held}`);
-    this.slotName.setText(ABILITIES[held].name);
+    const next = slots[0];
+    this.slotName.setVisible(Boolean(next));
+    this.slotHint.setVisible(Boolean(next));
+    if (!next) return;
+    this.slotName.setText(ABILITIES[next].name);
     this.slotHint.setAlpha(0.45 + 0.55 * Math.abs(Math.sin(this.clock * 4)));
   }
 
@@ -146,7 +163,7 @@ export default class Hud {
       }
       const y = EFFECT.y - row * EFFECT.rowGap;
       icon.setVisible(true).setPosition(EFFECT.x, y);
-      const fraction = remaining / ABILITIES[kind].duration;
+      const fraction = remaining / abilities.duration(kind);
       g.fillStyle(COLORS.track, 1);
       g.fillRect(EFFECT.x + 12, y - 2, EFFECT.barWidth, EFFECT.barHeight);
       g.fillStyle(ABILITIES[kind].color, 1);

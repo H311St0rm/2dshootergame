@@ -1,6 +1,6 @@
 import {
-  PLAYER, PLAYER_BULLET, DROPS, ABILITIES, ABILITY_KEYS, BOSS, SCORING, EXPLOSION, TIMING,
-  DEPTH, MAX_FRAME_DT,
+  PLAYER, PLAYER_BULLET, WEAPONS, DROPS, ABILITIES, ABILITY_KEYS, BOSS, SURVIVAL_GOLD, BARRIER, EXPLOSION,
+  TIMING, DEPTH, MAX_FRAME_DT,
 } from '../config/constants.js';
 import Player from '../entities/Player.js';
 import Enemy from '../entities/Enemy.js';
@@ -14,7 +14,7 @@ import SpawnManager from '../systems/SpawnManager.js';
 import BossManager from '../systems/BossManager.js';
 import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
-import { loadHighScore, saveHighScore } from '../systems/highScore.js';
+import { loadProfile, runModifiers, bankRun } from '../systems/profile.js';
 import Hud from '../ui/Hud.js';
 
 export default class GameScene extends Phaser.Scene {
@@ -23,6 +23,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
+    this.profile = loadProfile();
+    this.mods = runModifiers(this.profile);
+
     this.starfield = new Starfield(this);
     this.sfx = new Sfx(this);
 
@@ -31,26 +34,31 @@ export default class GameScene extends Phaser.Scene {
     this.enemies = this.physics.add.group({ classType: Enemy });
     this.pickups = this.physics.add.group({ classType: Pickup });
 
-    this.player = new Player(this, PLAYER.startX, PLAYER.startY);
+    this.player = new Player(this, PLAYER.startX, PLAYER.startY, this.mods.moveSpeedMul);
     this.shieldRing = this.add.image(PLAYER.startX, PLAYER.startY, 'shield_ring')
       .setDepth(DEPTH.shield)
       .setVisible(false);
+    this.hasBarrier = this.mods.startBarrier;
+    this.barrierRing = this.add.image(PLAYER.startX, PLAYER.startY, 'barrier_ring')
+      .setDepth(DEPTH.shield)
+      .setVisible(this.hasBarrier);
 
-    this.weapon = new WeaponManager();
-    this.abilities = new AbilityManager();
+    this.weapon = new WeaponManager(this.mods.weapon, this.mods.startLevel);
+    this.abilities = new AbilityManager(this.mods.abilitySlots, this.mods.abilityDurationMul);
     this.difficulty = new DifficultyManager();
+    this.difficulty.smoothedWeaponLevel = this.mods.startLevel;
     this.spawner = new SpawnManager(this.difficulty, (type, x) => this.spawnEnemy(type, x));
     this.bosses = new BossManager(this);
-    this.hud = new Hud(this);
+    this.hud = new Hud(this, this.abilities.capacity);
     this.emitters = new Map();
 
-    this.score = 0;
+    this.gold = 0;
     this.survivalTimer = 0;
     this.isGameOver = false;
-    this.bestScore = loadHighScore();
 
     this.enemyFire = (enemy) => this.fireEnemyPattern(enemy);
-    this.firePlayer = (pattern) => this.firePlayerVolley(pattern);
+    this.firePlayer = (volley) => this.firePlayerVolley(volley);
+    this.findSeekerTarget = (x, y) => this.nearestTarget(x, y);
 
     this.keys = this.input.keyboard.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D');
     this.input.keyboard.addCapture('SPACE');
@@ -93,7 +101,7 @@ export default class GameScene extends Phaser.Scene {
     if (!this.isGameOver) {
       this.updatePlayerMovement(dt);
       this.difficulty.update(dt);
-      this.updateSurvivalScore(dt);
+      this.updateSurvivalGold(dt);
       this.weapon.update(dt, this.abilities, this.firePlayer);
       this.spawner.update(dt, this.weapon.level);
     }
@@ -110,7 +118,7 @@ export default class GameScene extends Phaser.Scene {
       if (bullet.active) bullet.tick(slow);
     }
     for (const bullet of this.playerBullets.getChildren()) {
-      if (bullet.active) bullet.tick();
+      if (bullet.active) bullet.tick(dt, this.findSeekerTarget);
     }
     for (const pickup of this.pickups.getChildren()) {
       if (pickup.active) pickup.tick(dt);
@@ -119,6 +127,7 @@ export default class GameScene extends Phaser.Scene {
     const shielded = this.abilities.isActive('shield');
     this.player.tick(dt, shielded);
     this.updateShieldRing(shielded);
+    this.barrierRing.setVisible(this.hasBarrier && this.player.alive).setPosition(this.player.x, this.player.y);
     this.hud.update(dt, this.hudState());
   }
 
@@ -129,11 +138,11 @@ export default class GameScene extends Phaser.Scene {
     this.player.move(dirX, dirY, dt);
   }
 
-  updateSurvivalScore(dt) {
+  updateSurvivalGold(dt) {
     this.survivalTimer += dt;
-    while (this.survivalTimer >= SCORING.survivalPointInterval) {
-      this.survivalTimer -= SCORING.survivalPointInterval;
-      this.addScore(SCORING.survivalPointValue);
+    while (this.survivalTimer >= SURVIVAL_GOLD.interval) {
+      this.survivalTimer -= SURVIVAL_GOLD.interval;
+      this.addGold(SURVIVAL_GOLD.amount);
     }
   }
 
@@ -154,16 +163,32 @@ export default class GameScene extends Phaser.Scene {
       min: this.weapon.min,
       max: this.weapon.max,
       atMax: this.weapon.isAtMax,
-      score: this.score,
-      best: this.bestScore,
+      weaponName: WEAPONS[this.weapon.weaponId].name,
+      gold: Math.floor(this.gold),
+      best: this.profile.best,
       elapsed: this.difficulty.elapsed,
       streak: this.bosses.streak,
       bossActive: this.bosses.active,
       bossHp: boss.hp,
       bossMaxHp: boss.maxHp,
-      held: this.abilities.held,
       abilities: this.abilities,
     };
+  }
+
+  // Homing missiles chase the Sentinel during its fight, otherwise the nearest visible enemy.
+  nearestTarget(x, y) {
+    if (this.bosses.active) return this.bosses.boss;
+    let best = null;
+    let bestDistance = Infinity;
+    for (const enemy of this.enemies.getChildren()) {
+      if (!enemy.active || enemy.y < 0) continue;
+      const distance = (enemy.x - x) ** 2 + (enemy.y - y) ** 2;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = enemy;
+      }
+    }
+    return best;
   }
 
   pauseGame() {
@@ -185,11 +210,13 @@ export default class GameScene extends Phaser.Scene {
     this.pickups.get(x, y).spawn(kind, x, y);
   }
 
-  firePlayerVolley(pattern) {
-    const x = this.player.x;
+  firePlayerVolley(volley) {
+    const weapon = WEAPONS[this.weapon.weaponId];
     const y = this.player.y - PLAYER_BULLET.noseOffsetY;
-    for (const angle of pattern.angles) {
-      this.playerBullets.get(x, y).fire(x, y, angle, pattern.damage);
+    for (const shot of volley.shots) {
+      const x = this.player.x + shot.offsetX;
+      const jitter = weapon.jitterDeg ? Phaser.Math.FloatBetween(-weapon.jitterDeg, weapon.jitterDeg) : 0;
+      this.playerBullets.get(x, y).fire(x, y, shot.angle + jitter, volley.damage, weapon);
     }
     this.sfx.shoot();
   }
@@ -230,7 +257,7 @@ export default class GameScene extends Phaser.Scene {
 
   onBulletHitEnemy(bullet, enemy) {
     if (!bullet.active || !enemy.active) return;
-    bullet.disableBody(true, true);
+    if (!bullet.registerHit(enemy.uid)) return;
     if (enemy.damage(bullet.damage)) this.killEnemy(enemy, 'bullet');
   }
 
@@ -254,6 +281,7 @@ export default class GameScene extends Phaser.Scene {
     else this.collectAbility(pickup.kind, pickup.x, pickup.y);
   }
 
+  // Piercing never applies to the Sentinel: every shot that reaches it stops there.
   onBulletHitBoss(bullet) {
     if (!bullet.active || !this.bosses.active || this.isGameOver) return;
     bullet.disableBody(true, true);
@@ -270,6 +298,16 @@ export default class GameScene extends Phaser.Scene {
     if (!this.player.alive) return;
     if (this.abilities.isActive('shield')) return;
     if (this.player.isInvulnerable) return;
+
+    // Like Shield, the launch barrier blocks the hit outright: no level loss, streak kept.
+    if (this.hasBarrier) {
+      this.hasBarrier = false;
+      this.player.startInvulnerability();
+      this.flash(this.player.x, this.player.y, BARRIER.color, 1.2, 300);
+      this.sfx.playerHit();
+      this.hud.floatText(this.player.x, this.player.y - 22, 'BARRIER DOWN', '#ffd700');
+      return;
+    }
 
     const lost = this.weapon.takeHit();
     this.bosses.registerUnblockedHit();
@@ -290,7 +328,7 @@ export default class GameScene extends Phaser.Scene {
     this.explode(x, y, config.color);
     this.sfx.explode();
     if (cause !== 'ram') {
-      this.addScore(config.score);
+      this.addGold(config.gold);
       this.rollDrops(x, y);
     }
     this.bosses.registerKill(this.weapon.isAtMax);
@@ -298,15 +336,16 @@ export default class GameScene extends Phaser.Scene {
 
   rollDrops(x, y) {
     if (this.isGameOver) return;
-    const upgrade = Math.random() < DROPS.upgradeChance;
+    const upgrade = Math.random() < DROPS.upgradeChance + this.mods.upgradeDropBonus;
     const ability = Math.random() < DROPS.abilityChance;
     const offset = upgrade && ability ? DROPS.doubleDropOffsetX : 0;
     if (upgrade) this.spawnPickup('upgrade', x - offset, y);
     if (ability) this.spawnPickup(Phaser.Utils.Array.GetRandom(ABILITY_KEYS), x + offset, y);
   }
 
-  addScore(points) {
-    if (!this.isGameOver) this.score += points;
+  // Kept fractional so small Prospector bonuses on 1-gold ticks still add up; shown and banked floored.
+  addGold(amount) {
+    if (!this.isGameOver) this.gold += amount * this.mods.goldMul;
   }
 
   collectUpgrade(x, y) {
@@ -363,6 +402,7 @@ export default class GameScene extends Phaser.Scene {
     const { x, y } = this.player;
     this.player.kill();
     this.shieldRing.setVisible(false);
+    this.barrierRing.setVisible(false);
     this.explode(x, y, PLAYER.color, 24);
     this.explode(x, y, 0xffffff, 12);
     this.flash(x, y, PLAYER.color, 4, 500);
@@ -370,11 +410,12 @@ export default class GameScene extends Phaser.Scene {
     this.sfx.bigExplosion();
     this.spawner.pause();
 
-    const isNewBest = this.score > this.bestScore;
-    if (isNewBest) saveHighScore(this.score);
+    const earned = Math.floor(this.gold);
+    const isNewBest = bankRun(this.profile, earned);
     const result = {
-      score: this.score,
-      best: Math.max(this.score, this.bestScore),
+      earned,
+      bank: this.profile.gold,
+      best: this.profile.best,
       isNewBest,
       peakLevel: this.weapon.peakLevel,
       survived: this.difficulty.elapsed,
@@ -392,8 +433,8 @@ export default class GameScene extends Phaser.Scene {
 
   onBossDefeated({ index, flawless, x, y }) {
     this.bossExplosion(x, y);
-    const bonus = BOSS.scorePerIndex * index;
-    this.addScore(bonus);
+    const bonus = Math.floor(BOSS.goldPerIndex * index * this.mods.goldMul);
+    this.addGold(BOSS.goldPerIndex * index);
     this.difficulty.addBossDefeat();
     this.spawnPickup(Phaser.Utils.Array.GetRandom(ABILITY_KEYS), x, y);
 
@@ -402,7 +443,7 @@ export default class GameScene extends Phaser.Scene {
       this.sfx.prestige();
       this.hud.banner('PRESTIGE!', `FLOOR ${this.weapon.min}  ·  CEILING ${this.weapon.max}`, '#ffd700', 2600);
     } else {
-      this.hud.banner('SENTINEL DOWN', `+${bonus}  ·  THE THREAT GROWS`, '#ff8a7a', 2200);
+      this.hud.banner('SENTINEL DOWN', `+${bonus} GOLD  ·  THE THREAT GROWS`, '#ff8a7a', 2200);
     }
     if (!this.isGameOver) this.spawner.resume();
   }

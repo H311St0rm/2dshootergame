@@ -13,11 +13,13 @@
 
 A vertical space shooter where the ship auto-fires forward and the only thing
 the player controls is *movement* (to dodge incoming enemies and bullets) and
-*activating a single held ability* picked up from consumable drops. A second
-stream of weapon-upgrade drops permanently grows your firepower — and
+*activating held abilities* picked up from consumable drops. A second
+stream of weapon-upgrade drops grows your firepower during a run — and
 doubles as your only life bar, since getting hit strips upgrades away
 instead of costing a health point. Survive as long as possible against an
-endlessly escalating threat.
+endlessly escalating threat. Gold earned in each run is banked and spent in
+the Hangar on permanent upgrades: new weapons, a second ability slot, a
+launch barrier, and stackable refits (§19).
 
 ## 2. Core loop
 
@@ -25,10 +27,10 @@ endlessly escalating threat.
 2. Enemies spawn from the top of the screen and move/shoot according to their type.
 3. Player moves freely with keyboard input to dodge enemy bodies and bullets.
 4. Player bullets kill enemies, which sometimes drop a pickup — either a one-time weapon upgrade or a holdable ability (see §8b and §8).
-5. Weapon-upgrade pickups apply immediately on contact and permanently boost the ship's fire rate/damage/spread; ability pickups are held in a single slot and activated with one key press.
+5. Weapon-upgrade pickups apply immediately on contact and boost the ship's fire rate/damage/spread for the rest of the run; ability pickups are held in one slot (two with the Hangar upgrade) and activated with one key press.
 6. Difficulty ramps up on two separate tracks: enemy speed/bullet-speed/fire-frequency scale with survival time and permanently step up further with each boss defeated, while the number of enemies per wave scales (smoothly, never suddenly) with the player's current weapon level.
 7. Reach your weapon's max level and rack up 100 kills in a row without taking an unblocked hit, and a boss ("The Sentinel") shows up — or, as a fallback for a rougher run, simply reach 500 total kills regardless of level or damage taken. Either path can recur multiple times in one run — see §7b.
-8. There is no separate HP stat — taking a hit costs weapon levels instead (see §8b). Run ends when a hit lands while at the weapon's minimum level (0 to start). Score = kills + survival time. High score is saved locally.
+8. There is no separate HP stat — taking a hit costs weapon levels instead (see §8b). Run ends when a hit lands while at the weapon's minimum level (0 to start). Gold = kills + survival time + boss bonuses; each run's gold is banked for the Hangar and the best single run is remembered (§13, §19).
 
 ## 3. Tech stack & project structure
 
@@ -48,7 +50,8 @@ src/
     sprites.js             # Pixel-grid sprite definitions rendered by BootScene (§9)
   scenes/
     BootScene.js            # Generates all textures, then starts MenuScene
-    MenuScene.js             # Title screen
+    MenuScene.js             # Start screen with weapon select (§19)
+    HangarScene.js           # Upgrade shop (§19)
     GameScene.js             # Main gameplay
     PauseScene.js            # Pause overlay (§14)
     GameOverScene.js         # Death screen
@@ -64,12 +67,12 @@ src/
   systems/
     SpawnManager.js          # Decides what/when/how many to spawn per wave
     DifficultyManager.js     # Tracks elapsed time, bossBonusLevel, smoothedWeaponLevel, exposes both difficulty curves (§10)
-    AbilityManager.js        # Holds current ability, handles activation/effects
-    WeaponManager.js         # Tracks weapon level, fire stats, and the hit/level-loss/death rule (§8b)
+    AbilityManager.js        # Holds 1-2 ability slots (§8, §19), handles activation and timers
+    WeaponManager.js         # Weapon level, the hit/level-loss/death rule (§8b), and each weapon's volley shape (§19)
     BossManager.js           # Tracks both boss-trigger counters and runs the encounter (§7b)
     Starfield.js             # Parallax scrolling background
     Sfx.js                   # Procedural Web Audio sound effects (§15)
-    highScore.js             # localStorage load/save, guarded for blocked storage (§13)
+    profile.js               # Saved bank, best run, purchases and chosen weapon; run modifiers (§13, §19)
 ```
 
 ## 4. Screen & camera
@@ -80,12 +83,15 @@ src/
 
 ## 5. Controls
 
-Only two inputs exist. No mouse/touch required for v1.
+In a run, only movement and the ability key matter. No touch required for v1; menus also accept mouse clicks.
 
 | Input | Action |
 |---|---|
 | Arrow Keys **or** WASD | Move ship (both accepted simultaneously; either works) |
-| Spacebar | Activate currently held ability (no-op if nothing held) |
+| Spacebar | Activate the next held ability (no-op if nothing held) |
+| P **or** Esc | Pause / resume |
+
+On the start screen, Left/Right (or A/D) choose the starting weapon, Enter or Space launches, and H opens the Hangar (§19).
 
 Movement is free 2D, not lane-based. Diagonal movement must be normalized so diagonal speed equals straight-line speed (don't let diagonals be faster).
 
@@ -98,8 +104,8 @@ Movement is free 2D, not lane-based. Diagonal movement must be normalized so dia
 | Hitbox | 16×16, centered on sprite (smaller than visual sprite — forgiving "bullet-hell" style hitbox) |
 | Start position | x = 240 (center), y = 680 |
 | Movement bounds | x: [20, 460], y: [30, 770] |
-| Movement speed | 260 px/s |
-| Weapon level | 0–10 to start (range can permanently widen via the prestige reward in §7b), starts at 0 each run. Doubles as the player's life system — see §8b. |
+| Movement speed | 260 px/s, +4% per Thrusters rank (§19) |
+| Weapon level | 0–10 to start (range can permanently widen via the prestige reward in §7b), starts at 0 each run (plus one per Head Start rank, §19). Doubles as the player's life system — see §8b. |
 | Hit invincibility | 0.4s of i-frames after any hit (bullet or ram), purely to stop a single simultaneous multi-collision from registering as more than one hit. Sprite alpha flickers between 1.0 and 0.3 every 0.1s during i-frames. The Shield ability (§8) overrides this with full invulnerability. |
 | Death | Taking a hit while weapon level is already at `weaponLevelMin` (0 to start): explosion effect (§9), then transition to GameOverScene. Full rule in §8b. |
 
@@ -107,18 +113,18 @@ Movement is free 2D, not lane-based. Diagonal movement must be normalized so dia
 
 - Fires automatically, no input needed, from the moment gameplay starts.
 - Fire interval, damage-per-bullet, and bullet spread are all driven by the player's current **weapon level** (0–10 to start, wider after a prestige — §7b) — see the table in §8b. At level 0 this is 1 bullet straight up every 0.35s, damage 1 per bullet.
-- Bullet: 4×10 px yellow (`#ffe14d`) pixel sprite with a 5×10 hitbox (25% wider than it looks, so shots connect a little more easily), speed 480 px/s upward, destroyed off-screen or on enemy hit.
+- Bullet (the free Blaster weapon): 4×10 px yellow (`#ffe14d`) pixel sprite with a 5×10 hitbox (25% wider than it looks, so shots connect a little more easily), speed 480 px/s upward, destroyed off-screen or on enemy hit. The three unlockable weapons reshape the same level stats differently — see §19.
 - Temporary abilities (Rapid Fire, Spread Shot in §8) can further modify interval/spread on top of the current weapon level — §8b defines exactly how they combine.
 
 ## 7. Enemies
 
-Four enemy types, unlocked progressively by elapsed survival time (unlock times are fixed regardless of difficulty level — see §10). All enemies spawn at y = -20 (just above the visible screen) at a random valid x within [24, 456], move downward, and are destroyed/removed once fully off-screen at the bottom (no score for enemies that escape off-screen).
+Four enemy types, unlocked progressively by elapsed survival time (unlock times are fixed regardless of difficulty level — see §10). All enemies spawn at y = -20 (just above the visible screen) at a random valid x within [24, 456], move downward, and are destroyed/removed once fully off-screen at the bottom (no gold for enemies that escape off-screen).
 
 All Speed, Bullet speed, and Fire interval values below are **base** values — §10 scales all three up over time and with each boss defeated.
 
 Hitboxes are square and centered on the sprite: Drone 16 px, Gunner 17 px, Weaver 17 px, Bulwark 27 px. The same box is used both for player bullets hitting the enemy and for the enemy ramming the player.
 
-| Type | Name | HP | Sprite | Move pattern | Base speed (down) | Fires? | Fire pattern (base interval, base bullet speed) | Score | Unlocks at |
+| Type | Name | HP | Sprite | Move pattern | Base speed (down) | Fires? | Fire pattern (base interval, base bullet speed) | Gold | Unlocks at |
 |---|---|---|---|---|---|---|---|---|---|
 | A | Drone | 1 | 16×16 red `#ff4d4d` blocky pixel ship | Straight down | 90 px/s | No | — | 10 | 0s (from run start) |
 | B | Gunner | 2 | 18×18 orange `#ff9640` pixel ship | Straight down | 70 px/s | Yes | 1 bullet aimed at player's current position, every 1.8s, bullet speed 220 px/s | 20 | 15s |
@@ -139,7 +145,7 @@ A recurring boss fight with two independent trigger paths, so a clean/skilled ru
 
 Track two counters, both starting at 0 when gameplay starts:
 
-- **`bossStreak`** — the "flawless streak." Increments by 1 for every enemy kill made while the player's weapon level equals their current `weaponLevelMax` (§8b; starts at 10). Resets to 0 the instant an **unblocked** hit lands (any hit that isn't absorbed by the Shield ability, §8) — since a hit at max level always drops the player below it, any unblocked hit means the streak is broken. A Shield-blocked hit does **not** reset it. Triggers the boss at **100**.
+- **`bossStreak`** — the "flawless streak." Increments by 1 for every enemy kill made while the player's weapon level equals their current `weaponLevelMax` (§8b; starts at 10). Resets to 0 the instant an **unblocked** hit lands (any hit that isn't absorbed by the Shield ability, §8, or the Launch Barrier, §19) — since a hit at max level always drops the player below it, any unblocked hit means the streak is broken. A blocked hit does **not** reset it. Triggers the boss at **100**.
 - **`totalKillsSinceLastBoss`** — a simple fallback counter. Increments by 1 for every enemy kill, regardless of weapon level or damage taken. Triggers the boss at **500**, so a run that keeps taking hits (and can never sustain the flawless streak) still guarantees a boss eventually.
 
 Whichever counter reaches its threshold first triggers the boss immediately. On trigger, **both** counters reset to 0, so the next boss (of either run) needs a fresh 100-streak or 500-kill count from that point.
@@ -148,7 +154,7 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
 
 ### Boss encounter flow
 
-1. On trigger, all current on-screen regular enemies and their bullets are instantly cleared (no score awarded for the clear — it's just a clean transition into the fight).
+1. On trigger, all current on-screen regular enemies and their bullets are instantly cleared (no gold awarded for the clear — it's just a clean transition into the fight).
 2. Regular enemy spawning (§7) pauses for the duration of the fight.
 3. The Sentinel enters from the top (y = -40), moving down to a hover position (y = 150) at 100 px/s, then holds there, moving side to side in a sine pattern (amplitude 150px, period 4s) for the rest of the fight.
 4. The Sentinel attacks on two independent timers:
@@ -157,7 +163,7 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
 5. Touching the Sentinel's body costs the player a hit under the same universal rule as everything else (§8b) — but unlike ramming a regular enemy (§11), this does **not** damage or destroy the Sentinel itself; only player bullets do.
 6. Ability interactions with the boss: **Nova Bomb does not damage the Sentinel** — it destroys regular enemies and clears every enemy bullet on screen (the Sentinel's included), but the boss itself is untouched, so it can never instantly clear a boss fight. **Overdrive** (time slow) *does* apply to the Sentinel like any other enemy, slowing its movement and bullets to 40% speed. **Shield** and the fire-rate/spread abilities work exactly as normal during a boss fight.
 7. HP scales with how many Sentinels the player has already defeated this run: `3000 + 1500 * (bossIndex - 1)` (1st fight: 3000 HP, 2nd: 4500, 3rd: 6000, …).
-8. On defeat: a large explosion (scaled-up particle burst), award `500 * bossIndex` bonus score, permanently add **+3** to `bossBonusLevel` (§10 — this is what escalates enemy speed/bullet-speed/fire-frequency from here on, not weapon level), and guarantee one Ability pickup drop at the death position (a Weapon Upgrade would be wasted if the player is already at `weaponLevelMax`, so the Sentinel always drops an ability instead). Regular spawning resumes and `bossIndex` increments for next time.
+8. On defeat: a large explosion (scaled-up particle burst), award `500 * bossIndex` bonus gold, permanently add **+3** to `bossBonusLevel` (§10 — this is what escalates enemy speed/bullet-speed/fire-frequency from here on, not weapon level), and guarantee one Ability pickup drop at the death position (a Weapon Upgrade would be wasted if the player is already at `weaponLevelMax`, so the Sentinel always drops an ability instead). Regular spawning resumes and `bossIndex` increments for next time.
 
 ### Sentinel appearance
 
@@ -167,25 +173,26 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
 
 An extra, stackable reward on top of the normal boss-defeat rewards in step 8 above, for players who enter a boss fight already at their weapon cap and leave it without taking a single hit.
 
-- **Condition:** the player takes zero hits for the entire duration of a boss fight (any boss, triggered via either path in §7b), **and** their weapon level equals their current `weaponLevelMax` at the moment the boss dies. (Since no regular enemies spawn during a boss fight, a flawless fight means the player's weapon level literally cannot have changed since the fight started — so this is equivalent to "you started the fight already at your cap and stayed there.")
+- **Condition:** the player takes zero unblocked hits (Shield and the Launch Barrier don't count) for the entire duration of a boss fight (any boss, triggered via either path in §7b), **and** their weapon level equals their current `weaponLevelMax` at the moment the boss dies. (Since no regular enemies spawn during a boss fight, a flawless fight means the player's weapon level literally cannot have changed since the fight started — so this is equivalent to "you started the fight already at your cap and stayed there.")
 - **Effect:** `weaponLevelMin += 5`, `weaponLevelMax += 5`, `weaponLevel -= 5`. The first time this triggers (starting from the default 0–10 range), that's `weaponLevelMin: 0→5`, `weaponLevelMax: 10→15`, current level `10→5`.
 - This is a genuine, immediate power **dip** — level 5 is weaker than level 10 (§8b's table) — traded for a permanently higher ceiling (you can eventually out-power your old peak) and a permanently higher floor (you can never again be as fragile as the original level-0 state, since the minimum a hit can knock you down to keeps rising too).
 - This is **repeatable and uncapped**: if the player later flawlessly clears another boss while sitting exactly at their (now raised) `weaponLevelMax`, it triggers again with the same +5/+5/−5 shift, and so on indefinitely — fitting, since this whole game has no difficulty cap either.
-- This reward is independent of the guaranteed ability drop and bonus score from step 8 — a flawless max-level boss kill gives the player **both**.
+- This reward is independent of the guaranteed ability drop and bonus gold from step 8 — a flawless max-level boss kill gives the player **both**.
 
 ## 8. Abilities (consumable pickups)
 
 - Enemies destroyed by a **player bullet** (not by ramming — see §11) have a **3% chance** to drop an ability pickup at their death position. This roll is independent of the weapon-upgrade roll in §8b — see there for how the two combine.
 - Pickup: 14×14 px diamond/orb sprite, distinct color per ability (below), falls straight down at 60 px/s, despawns if it exits the bottom of the screen uncollected.
 - Player collects a pickup by touching it with their hitbox.
-- **Single ability slot.** The player holds at most one ability at a time. Collecting a new pickup while already holding one **replaces** the held ability (the old one is lost — no stacking, no queue).
-- Pressing **Space** with an ability held: consumes it and immediately applies its effect. Pressing Space with nothing held: does nothing.
+- **Ability slots.** The player has one slot by default, two after buying the Second Ability Slot (§19). Pickups fill the first empty slot. With every slot full, a new pickup **replaces the last slot** (with one slot, that simply replaces the held ability), so the ability queued to fire next is never lost.
+- Pressing **Space** fires slot 1 and moves the rest up, so abilities fire in the order they were picked up. Pressing Space with nothing held: does nothing.
 - All 5 abilities are equally weighted (20% each) when a drop occurs.
+- Timed abilities last 10% longer per Capacitors rank (§19).
 
 | Ability | Icon color | Effect | Duration |
 |---|---|---|---|
 | Shield | Light blue `#4de3ff`, pulsing ring | Full invulnerability — ignores all damage and skips i-frame damage-flicker | 4s |
-| Nova Bomb | White/orange `#ffb04d` burst | Instant: destroys every enemy currently on screen (awards their normal score) and clears every enemy bullet on screen. Big radial flash VFX. | Instant (no duration) |
+| Nova Bomb | White/orange `#ffb04d` burst | Instant: destroys every enemy currently on screen (awards their normal gold) and clears every enemy bullet on screen. Big radial flash VFX. | Instant (no duration) |
 | Rapid Fire | Yellow `#fff34d` bolt | Auto-fire interval reduced from 0.35s to 0.12s | 5s |
 | Spread Shot | Green `#4dff88` trident | Auto-fire becomes 3-way spread (−15°, 0°, +15°) instead of single bullet; interval unchanged | 5s |
 | Overdrive (time slow) | Purple `#b34dff` hourglass | All enemies and enemy bullets move at 40% of their normal speed. Player and player bullets unaffected. | 4s |
@@ -198,7 +205,7 @@ This is a second, independent pickup track from the ability system in §8. It pe
 
 - 14×14 px gold (`#ffd700`) chevron/arrow-shaped pixel sprite — visually distinct from the diamond-shaped ability pickups. Falls straight down at 60 px/s, despawns off-screen if uncollected.
 - Drop rolls happen on every **bullet-kill** (not ram-kills — same rule as ability drops, §11), and are **fully independent** of the ability-drop roll in §8:
-  1. Roll 5% for a Weapon Upgrade drop.
+  1. Roll 5% (+1% per Salvage Scanner rank, §19) for a Weapon Upgrade drop.
   2. Separately, roll 3% for an Ability drop (§8).
   3. Both can succeed on the same kill (0.15% of kills) — in that case, spawn both pickups at the death position, offset a few pixels apart horizontally so they don't overlap. Both can also both fail, in which case nothing drops.
 - Enemies killed by the Nova Bomb ability each roll independently using the same rules above.
@@ -232,7 +239,8 @@ Damage, fire interval, and bullet pattern all come from the player's current lev
 - **Rapid Fire** sets the fire interval to `min(levelInterval, 0.12s)` for its duration — a big boost at low levels, and never a downgrade at levels 12+ whose own interval is already faster than 0.12s.
 - **Spread Shot** sets the bullet pattern to the 3-way (−15°, 0°, +15°) spread for its duration — *unless* the player's current weapon level already fires 3 or more bullets (level 6+), in which case the level's own (equal-or-wider) pattern is kept instead, so the ability can never downgrade a high-level player.
 - Damage-per-bullet always comes from the current weapon level; neither ability changes it.
-- These two systems are otherwise fully independent: the single ability slot (§8) and the weapon level (this section) don't interact with or consume each other.
+- These two systems are otherwise fully independent: the ability slots (§8) and the weapon level (this section) don't interact with or consume each other.
+- For the Lance, Scatter and Seeker weapons, both abilities apply to the level's stats before the weapon reshapes them, so they help every weapon by the same proportion (§19).
 
 ### Taking damage
 
@@ -242,8 +250,8 @@ The player has a `weaponLevelMin` (starts at 0) and `weaponLevelMax` (starts at 
 
 - If the player's weapon level is **greater than `weaponLevelMin`** when hit: `level = max(weaponLevelMin, level - 3)`. The player survives (subject to the 0.4s hit-invincibility in §6), but permanently loses the fire-rate/damage/spread that came with those levels until more upgrades are collected.
 - If the player's weapon level is **already at `weaponLevelMin`** when hit: there are no levels left to remove, so the hit kills the player instead.
-- The Shield ability (§8) fully blocks this — no level loss and no death while Shield is active.
-- `weaponLevel` resets to 0, and `weaponLevelMin`/`weaponLevelMax` reset to 0/10, at the start of every new run (none of this is persistent meta-progression).
+- The Shield ability (§8) fully blocks this — no level loss and no death while Shield is active. The Launch Barrier (§19) blocks the first such hit of a run the same way.
+- `weaponLevel` resets to 0 (plus Head Start ranks), and `weaponLevelMin`/`weaponLevelMax` reset to 0/10, at the start of every new run. Only the Hangar purchases in §19 carry over between runs.
 
 ## 9. Visual generation (procedural pixel art)
 
@@ -253,8 +261,9 @@ Required generated textures:
 - Player ship (24×24)
 - Enemy types A–D (16×16 / 18×18 / 18×18 / 28×28)
 - The Sentinel boss (64×64, see §7b)
-- Player bullet (4×10)
+- Player projectiles: Blaster bullet (4×10), Lance beam (2×16), Scatter pellet (4×4), Seeker missile (4×8)
 - Enemy bullet (6×6)
+- Launch Barrier ring (34×34, thin gold double circle)
 - 5 ability pickup icons (14×14 each, one per ability color above)
 - 1 weapon upgrade pickup icon (14×14, gold `#ffd700` chevron — visually distinct shape from the ability orbs)
 - A small square particle (4×4, white) reused (tinted per-enemy-color) for explosion bursts
@@ -291,36 +300,41 @@ Two independent difficulty systems, driven by two different things: how long you
 
 | Collision | Result |
 |---|---|
-| Player bullet ↔ Enemy | Enemy HP − (bullet's current damage-per-bullet, from §8b); bullet destroyed. If enemy HP ≤ 0: explode, award score, roll pickup drop chance (§8b). |
-| Player ↔ Enemy body ("ramming") | Player takes a hit per the weapon-level rule in §8b (subject to i-frames); enemy is also destroyed and explodes, but awards **no score** and **no pickup drop** (shooting enemies down is the intended, rewarded playstyle; ramming is a fallback that costs the player). |
+| Player bullet ↔ Enemy | Enemy HP − (the volley's damage per shot, §8b/§19); bullet destroyed, unless it is a Lance beam with pierce left (§19). If enemy HP ≤ 0: explode, award gold, roll pickup drop chance (§8b). |
+| Player ↔ Enemy body ("ramming") | Player takes a hit per the weapon-level rule in §8b (subject to i-frames); enemy is also destroyed and explodes, but awards **no gold** and **no pickup drop** (shooting enemies down is the intended, rewarded playstyle; ramming is a fallback that costs the player). |
 | Player ↔ Enemy bullet | Player takes a hit per the weapon-level rule in §8b (subject to i-frames); bullet destroyed. |
-| Player ↔ Ability pickup | Collected into the ability slot per §8's replace rule; pickup removed; small collect flash. |
+| Player ↔ Ability pickup | Collected into the ability slots per §8's fill/replace rule; pickup removed; small collect flash. |
 | Player ↔ Upgrade pickup | Weapon level +1 (capped at `weaponLevelMax`) per §8b; pickup removed; small collect flash. |
 
 All bullets/enemies/pickups are destroyed and removed once they fully exit the screen bounds (with a small margin) to avoid unbounded object growth.
 
 ## 12. HUD
 
-- **Top-left:** Weapon Level meter — a bar filled to `(weaponLevel - weaponLevelMin) / (weaponLevelMax - weaponLevelMin)`, labeled with the exact numeric level (e.g. "LVL 8"). Empty means the next hit is lethal. Using a fraction rather than fixed pips means it reads correctly even after the range widens via a prestige (§7b). This single meter replaces a traditional health bar; see §8b.
-- **Top-right:** Live score, with "Best: N" high score directly beneath it.
-- **Bottom-center:** Ability slot box — empty/greyed outline when nothing held; filled with the held ability's icon + short label + a pulsing "[SPACE]" hint when something is held.
+- **Top-left:** Weapon Level meter — a bar filled to `(weaponLevel - weaponLevelMin) / (weaponLevelMax - weaponLevelMin)`, labeled with the exact numeric level (e.g. "LVL 8"). Empty means the next hit is lethal. Using a fraction rather than fixed pips means it reads correctly even after the range widens via a prestige (§7b). This single meter replaces a traditional health bar; see §8b. The equipped weapon's name sits under the meter.
+- **Top-right:** Live gold ("GOLD 1,234"), with "BEST RUN N" directly beneath it.
+- **Bottom-center:** One ability slot box, or two side by side with the Second Ability Slot (§19). Empty slots are greyed outlines. Slot 1 shows its icon brightly with its name to the left and a pulsing "[SPACE]" hint to the right; slot 2's icon is dimmed as the queued one.
 - **Top-center (optional but recommended):** Survival timer as `mm:ss`.
 - **Below the survival timer, only while weapon level equals `weaponLevelMax`:** the flawless-streak progress, e.g. "Streak: 67/100" (§7b).
 - **While a boss is active:** a boss HP bar spanning the top of the screen, labeled "THE SENTINEL", replacing the streak readout for the fight's duration.
 
-## 13. Scoring & persistence
+## 13. Gold & persistence
 
-- Score += enemy's listed score value on each bullet-kill (see §7 table).
-- Score += 2 points per second survived (continuous, e.g. add 1 point every 0.5s tick).
-- On death, compare final score to the stored high score (`localStorage` key: `stellarDodge_highScore`); if higher, overwrite it.
-- High score persists across page reloads via `localStorage` and is displayed on both the Menu and Game Over screens.
+What used to be "score" is **gold**, and it is both the run's score and the currency for the Hangar (§19).
+
+- Gold += the enemy's listed gold value on each bullet- or Nova-kill (see §7 table).
+- Gold += 2 per second survived (1 gold every 0.5s tick).
+- Gold += `500 × bossIndex` for each Sentinel destroyed (§7b).
+- Every source is multiplied by `1 + 0.05 × Prospector rank` (§19). Run gold is tracked fractionally so small multipliers on 1-gold ticks still add up, and is floored for display and banking.
+- On death, the run's gold is added to the persistent **bank**, and if it beats the stored best single run, it becomes the new **BEST RUN**.
+- Everything persistent lives in one `localStorage` entry, `stellarDodge_profile`, holding `gold` (bank), `best`, `unlocks`, `ranks` and `weapon`. A legacy `stellarDodge_highScore` value is migrated into `best` once. Unreadable or blocked storage falls back to a fresh profile without crashing.
 
 ## 14. Scene flow
 
 1. **BootScene** — generates all procedural textures (§9), then immediately starts `MenuScene`. No visible content of its own.
-2. **MenuScene** — shows the game title, controls text (`Arrow Keys / WASD: Move   SPACE: Activate Ability`), current best score, and a "Click or press Enter to Start" prompt. Starts `GameScene` on input.
-3. **GameScene** — full gameplay as specified above. On player death, transitions to `GameOverScene` passing the final score.
-4. **GameOverScene** — shows "GAME OVER", final score, best score, and a "Press R or Click to Retry" prompt that restarts `GameScene` directly (fast-retry loop; no need to pass back through the menu). Optionally (nice-to-have, not required) also show the max weapon level reached during the run.
+2. **MenuScene** — the start screen: title, weapon select with a volley preview (§19), controls, the gold bank and best run, "ENTER LAUNCH" (starts `GameScene`) and "H HANGAR" (opens `HangarScene`). Both prompts are also clickable.
+3. **HangarScene** — the upgrade shop (§19). Esc, H or Backspace returns to `MenuScene`.
+4. **GameScene** — full gameplay as specified above. On player death, banks the run's gold and transitions to `GameOverScene`.
+5. **GameOverScene** — shows "GAME OVER", gold earned this run, the bank total, best run (with a "NEW BEST RUN!" badge when beaten), time survived, max weapon level and Sentinels destroyed. After a 0.5s input delay: R retries (straight back into `GameScene`), H opens the Hangar, M returns to the start screen; each is also clickable.
 
 Pause (e.g. an 'P'/Esc key that freezes the scene) is a nice-to-have, not required for v1 — include it only if it doesn't add risk to finishing the rest of the spec.
 
@@ -334,9 +348,9 @@ Do not implement any of the following — they are intentionally out of scope:
 
 - Mobile touch controls or gamepad support
 - Scripted levels/waves with a defined end (the boss in §7b is a recurring endless-mode event, not a level structure)
-- Multiple simultaneous ability slots (still just one at a time; weapon level already has its own — rising — cap, see §7b/§8b)
+- More than two ability slots
 - Multiplayer
-- Any save/meta-progression beyond the single high-score value
+- Cloud saves or accounts — progress lives only in this browser's `localStorage`
 - Story, dialogue, or cutscenes
 - Settings/options menu, volume controls
 - Real image/audio asset files (everything is procedural per §9 and §15)
@@ -344,13 +358,13 @@ Do not implement any of the following — they are intentionally out of scope:
 ## 17. Definition of done (acceptance checklist)
 
 - [ ] Served from any static file server, `index.html` runs with zero build step and zero console errors.
-- [ ] Menu screen shows title, controls, best score, and a working start prompt.
+- [ ] Start screen shows title, weapon select, controls, gold bank, best run, and working Launch and Hangar prompts.
 - [ ] Ship moves smoothly with Arrow Keys and WASD, normalized diagonal speed, clamped to bounds.
 - [ ] Ship auto-fires continuously with no player input required.
 - [ ] All 4 enemy types appear, each gated by its correct unlock time, each with correct movement and (where applicable) firing behavior.
-- [ ] Player bullets damage/destroy enemies using the current weapon level's damage value, award correct score, and trigger the independent 5% upgrade / 3% ability drop rolls on bullet-kills only (both may drop from the same kill).
+- [ ] Player bullets damage/destroy enemies using the current volley's damage value, award correct gold, and trigger the independent 5% upgrade / 3% ability drop rolls on bullet-kills only (both may drop from the same kill).
 - [ ] Collecting an Upgrade pickup increases weapon level (capped at the current `weaponLevelMax`) and visibly changes fire rate, damage, and bullet spread per the §8b table.
-- [ ] Player can hold exactly one ability at a time (new ability pickups replace the held one) and activate it with Space for the correct effect and duration.
+- [ ] Player holds one ability (two with the Second Ability Slot); a pickup into full slots replaces the last slot; Space fires slot 1 first with the correct effect and duration.
 - [ ] Taking a hit while weapon level > `weaponLevelMin` removes 3 levels (clamped at `weaponLevelMin`) and applies the 0.4s i-frames with visible flicker; taking a hit while already at `weaponLevelMin` kills the player, triggering the explosion and Game Over transition.
 - [ ] `weaponLevel`, `weaponLevelMin` (0), and `weaponLevelMax` (10) all reset at the start of each new run.
 - [ ] Reaching `weaponLevelMax` and getting 100 kills in a row without an unblocked hit triggers a boss; the streak resets on any unblocked hit but not on a Shield-blocked one.
@@ -358,12 +372,16 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] On trigger, both boss counters reset to 0, on-screen regular enemies/bullets are cleared, and regular spawning pauses until the boss is defeated.
 - [ ] The Sentinel fires its fan-spread and aimed-burst patterns on the correct timers and can be damaged/destroyed by player bullets using current weapon-level damage.
 - [ ] Touching the Sentinel costs the player a hit but does not damage the Sentinel itself; Nova Bomb has no effect on the Sentinel; Overdrive slows the Sentinel like any regular enemy.
-- [ ] Defeating a boss awards `500 * bossIndex` bonus score, guarantees an ability drop, resumes normal spawning, and scales HP up (`3000 + 1500 * (bossIndex-1)`) for the next boss in the same run.
+- [ ] Defeating a boss awards `500 * bossIndex` bonus gold, guarantees an ability drop, resumes normal spawning, and scales HP up (`3000 + 1500 * (bossIndex-1)`) for the next boss in the same run.
 - [ ] A flawless boss kill while at `weaponLevelMax` also triggers the prestige reward (`weaponLevelMin += 5`, `weaponLevelMax += 5`, `weaponLevel -= 5`), stacking with (not replacing) the normal boss rewards, and this repeats correctly if the player prestiges more than once in a run.
 - [ ] Enemy movement speed, bullet speed, and fire frequency all increase the longer the run lasts, and each boss defeat permanently bumps them further via `bossBonusLevel` (+3); none of this is affected by weapon level.
 - [ ] The number of enemies spawned per wave increases as `smoothedWeaponLevel` rises, and that value only ever moves 1 level per wave toward the real `weaponLevel` — a sudden weapon-level change (a hit, several pickups in a row, a prestige) never causes an instant jump or drop in enemy count.
-- [ ] Game Over screen shows final score + best score; retry restarts a fresh run.
-- [ ] High score persists across a full page reload.
+- [ ] Game Over screen shows gold earned, bank and best run; R retries a fresh run, H opens the Hangar, M returns to the start screen.
+- [ ] Run gold is banked on death, and the bank, best run, purchases and chosen weapon all persist across a full page reload.
+- [ ] The Hangar sells every §19 item at its listed price, refuses owned/maxed items and unaffordable ones (showing the shortfall), and each purchase takes effect on the next run.
+- [ ] Left/Right on the start screen cycles only unlocked weapons, and the chosen weapon is the one used in the run.
+- [ ] Lance beams pierce one enemy; Scatter pellets vanish at 320px; Seeker missiles home onto the nearest enemy; Rapid Fire and Spread Shot scale every weapon proportionally.
+- [ ] The Launch Barrier absorbs exactly the first unblocked hit of a run without costing levels or breaking the streak.
 
 ## 18. Notes for the implementing AI
 
@@ -371,3 +389,60 @@ Do not implement any of the following — they are intentionally out of scope:
 - Keep all tunable numbers from this spec centralized in `src/config/constants.js` so future rebalancing doesn't require hunting through gameplay code.
 - Prioritize getting the full loop (menu → play → dodge/shoot/collect/activate → death → game over → retry) working end-to-end before polishing visuals or adding audio.
 - Commit the finished game to the repository once it satisfies the checklist in §17.
+
+## 19. Meta progression (gold, Hangar, weapons)
+
+Runs feed a persistent bank of gold (§13), which buys permanent upgrades between runs.
+
+### The Hangar
+
+Opened with H from the start screen or the Game Over screen. Up/Down or W/S select a row, Enter or Space buys, Esc/H/Backspace return to the start screen; rows and buttons are also clickable. Each row shows its next price (gold when affordable, grey when not), OWNED, or MAX, and refits show filled/empty rank pips. Trying to buy something unaffordable shows the shortfall ("NEED 1,234 MORE GOLD"); trying to buy something owned or maxed says so. A purchase saves immediately and applies from the next run.
+
+**Major upgrades** — bought once, 5,000 gold each:
+
+| Upgrade | Effect |
+|---|---|
+| Second Ability Slot | Hold two abilities; SPACE fires them in pickup order (rules below). |
+| Launch Barrier | Every run starts with a barrier that absorbs one hit (rules below). |
+| Weapon: Lance | Unlocks the Lance and equips it. |
+| Weapon: Scatter | Unlocks the Scatter and equips it. |
+| Weapon: Seeker | Unlocks the Seeker and equips it. |
+
+**Refits** — stackable ranks, each rank costing more:
+
+| Refit | Per rank | Ranks | Cost per rank |
+|---|---|---|---|
+| Thrusters | +4% movement speed | 5 | 300 / 600 / 900 / 1,200 / 1,500 |
+| Capacitors | Timed abilities last +10% | 5 | 300 / 600 / 900 / 1,200 / 1,500 |
+| Salvage Scanner | +1% weapon-upgrade drop chance (base 5%) | 3 | 500 / 1,000 / 2,000 |
+| Prospector | +5% gold from every source | 5 | 400 / 800 / 1,200 / 1,600 / 2,000 |
+| Head Start | Start each run one weapon level higher (smoothed enemy count starts there too) | 3 | 800 / 1,600 / 3,200 |
+
+Buying everything costs 49,100 gold (25,000 for the majors, 24,100 for all refit ranks).
+
+### Second Ability Slot
+
+- Pickups fill the first empty slot; SPACE always fires slot 1 and slot 2 moves up, so abilities fire in the order they were picked up.
+- With both slots full, a new pickup replaces slot 2, so the ability queued to fire next is never lost.
+
+### Launch Barrier
+
+- A thin gold ring around the ship at the start of every run.
+- The first hit that would cost levels (enemy bullet, ram, or Sentinel contact not already stopped by Shield or i-frames) breaks the barrier instead: no level loss, normal 0.4s i-frames, a gold flash and a "BARRIER DOWN" label. Like Shield, it doesn't reset the flawless streak or spoil a flawless boss fight (§7b).
+- One per run; nothing restores it mid-run.
+
+### Weapons
+
+All four weapons read the same level table (§8b) and reshape it, so upgrades, the damage rule and prestige work identically for each. Rapid Fire and Spread Shot modify the level's stats *before* the weapon reshapes them (interval becomes `min(levelInterval, 0.12s)`; a shot count below 3 becomes the 3-way spread), so both help every weapon by the same proportion and never downgrade it. Each projectile's hitbox is about 25% wider than its sprite, rounded up.
+
+| Weapon | Shots per volley | Damage per shot | Fire interval | Projectile |
+|---|---|---|---|---|
+| Blaster (free) | The level's fan (§8b) | Level damage | Level interval | 4×10 sprite, 5×10 hitbox, 480 px/s |
+| Lance | Same count as the level, as parallel straight-up lanes 7px apart. Each beam pierces one enemy (damages up to two different enemies, never the same one twice) and always stops at the Sentinel. | Level damage | Level interval | 2×16 sprite, 3×16 hitbox, 640 px/s |
+| Scatter | `2 × levelCount + 1` pellets spread evenly across ±(20° + 3° × levelCount), each with ±3° random jitter | `max(1, round(levelDamage × 0.6))` | Level interval × 1.4 | 4×4 sprite, 5×5 hitbox, 520 px/s, vanishes after 320px (fading over the last 30%) |
+| Seeker | `ceil(levelCount / 2)` missiles, launched across ±25° (straight up when only one) | Level damage × 2 | Level interval × 1.5 | 4×8 sprite, 5×8 hitbox, 320 px/s, turns up to 5 rad/s toward the nearest on-screen enemy (the Sentinel during its fight), expires after 3s |
+
+### Choosing a weapon
+
+- The start screen shows the equipped weapon: a still preview of one volley at weapon level 6 above the ship, the name between `<` and `>`, a one-line description, and one dot per weapon (filled for unlocked, outlined for locked, larger and cyan for the equipped one). A line under the dots says how many weapons remain to unlock.
+- Left/Right or A/D (or clicking the arrows) cycles through **unlocked** weapons only. The choice is saved and used for every run until changed; buying a weapon in the Hangar equips it.

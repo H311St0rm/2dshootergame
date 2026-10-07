@@ -94,6 +94,10 @@ export default class Sfx {
     this.tone(990, null, 0.12, 'square', 0.12, 0.07);
   }
 
+  denied() {
+    this.tone(160, 120, 0.18, 'square', 0.15);
+  }
+
   abilityCollect() {
     this.tone(520, 1040, 0.15, 'triangle', 0.25);
   }

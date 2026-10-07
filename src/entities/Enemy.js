@@ -1,5 +1,7 @@
 import { ENEMY_SPAWN, GAME_HEIGHT, DEPTH } from '../config/constants.js';
 
+let nextUid = 1;
+
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y) {
     super(scene, x, y, 'enemy_drone');
@@ -7,6 +9,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   spawn(config, x) {
+    // Pooled enemies get a fresh id per spawn so piercing shots never mistake a recycled one.
+    this.uid = nextUid++;
     this.config = config;
     this.setTexture(config.texture);
     this.enableBody(true, x, ENEMY_SPAWN.y, true, true);

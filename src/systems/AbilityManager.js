@@ -3,23 +3,34 @@ import { ABILITIES, ABILITY_KEYS } from '../config/constants.js';
 export const TIMED_ABILITIES = ABILITY_KEYS.filter((kind) => ABILITIES[kind].duration > 0);
 
 export default class AbilityManager {
-  constructor() {
-    this.held = null;
+  constructor(capacity = 1, durationMul = 1) {
+    this.capacity = capacity;
+    this.durationMul = durationMul;
+    this.slots = [];
     this.timers = Object.fromEntries(TIMED_ABILITIES.map((kind) => [kind, 0]));
   }
 
-  // Single slot: a new pickup always replaces whatever is held.
-  collect(kind) {
-    this.held = kind;
+  // The next ability SPACE will fire.
+  get held() {
+    return this.slots[0] ?? null;
   }
 
-  // Consumes the held ability and returns its kind (null if nothing was held).
+  // Fills the first empty slot; with every slot full, the newest pickup replaces
+  // the last slot so the ability queued to fire next is never lost.
+  collect(kind) {
+    if (this.slots.length < this.capacity) this.slots.push(kind);
+    else this.slots[this.capacity - 1] = kind;
+  }
+
+  // Fires the first slot, moves the rest forward, and returns the kind (null if empty).
   activate() {
-    const kind = this.held;
-    if (!kind) return null;
-    this.held = null;
-    if (ABILITIES[kind].duration > 0) this.timers[kind] = ABILITIES[kind].duration;
+    const kind = this.slots.shift() ?? null;
+    if (kind && ABILITIES[kind].duration > 0) this.timers[kind] = this.duration(kind);
     return kind;
+  }
+
+  duration(kind) {
+    return ABILITIES[kind].duration * this.durationMul;
   }
 
   update(dt) {

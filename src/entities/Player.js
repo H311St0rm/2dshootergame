@@ -4,12 +4,13 @@ const HURT_TINT = 0xff6060;
 const HURT_TINT_SECONDS = 0.15;
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
-  constructor(scene, x, y) {
+  constructor(scene, x, y, speedMul = 1) {
     super(scene, x, y, 'player');
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.body.setSize(PLAYER.hitboxSize, PLAYER.hitboxSize, true);
     this.setDepth(DEPTH.player);
+    this.speed = PLAYER.speed * speedMul;
     this.invulnTimer = 0;
     this.hurtTintTimer = 0;
     this.alive = true;
@@ -24,8 +25,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       dy /= len;
     }
     const b = PLAYER.bounds;
-    this.x = Phaser.Math.Clamp(this.x + dx * PLAYER.speed * dt, b.minX, b.maxX);
-    this.y = Phaser.Math.Clamp(this.y + dy * PLAYER.speed * dt, b.minY, b.maxY);
+    this.x = Phaser.Math.Clamp(this.x + dx * this.speed * dt, b.minX, b.maxX);
+    this.y = Phaser.Math.Clamp(this.y + dy * this.speed * dt, b.minY, b.maxY);
   }
 
   get isInvulnerable() {

@@ -3,7 +3,8 @@ export const GAME_WIDTH = 480;
 export const GAME_HEIGHT = 800;
 export const BG_COLOR = '#05060a';
 export const FONT = '"Courier New", Courier, monospace';
-export const HIGH_SCORE_KEY = 'stellarDodge_highScore';
+export const PROFILE_KEY = 'stellarDodge_profile';
+export const LEGACY_HIGH_SCORE_KEY = 'stellarDodge_highScore';
 export const MAX_FRAME_DT = 0.1;
 
 export const DEPTH = {
@@ -40,10 +41,34 @@ export const PLAYER = {
 };
 
 export const PLAYER_BULLET = {
-  speed: 480,
   noseOffsetY: 12,
-  // Deliberately 25% wider than the 4px sprite so shots connect more easily.
-  hitbox: { width: 5, height: 10 },
+  cullMargin: 20,
+};
+
+// Every weapon reads the same level table (§8b) and reshapes it. Hitboxes are
+// deliberately ~25% wider than each projectile sprite, rounded up.
+export const WEAPON_ORDER = ['blaster', 'lance', 'scatter', 'seeker'];
+
+export const WEAPONS = {
+  blaster: {
+    id: 'blaster', name: 'BLASTER', texture: 'player_bullet', hitbox: { width: 5, height: 10 }, speed: 480,
+    blurb: 'A balanced fan of shots that widens as you level up.',
+  },
+  lance: {
+    id: 'lance', name: 'LANCE', texture: 'bullet_lance', hitbox: { width: 3, height: 16 }, speed: 640,
+    laneSpacing: 7, pierce: 1,
+    blurb: 'Tight parallel beams. Each beam passes through one enemy and hits the next.',
+  },
+  scatter: {
+    id: 'scatter', name: 'SCATTER', texture: 'bullet_pellet', hitbox: { width: 5, height: 5 }, speed: 520,
+    range: 320, coneBaseDeg: 20, coneDegPerShot: 3, jitterDeg: 3, damageScale: 0.6, intervalScale: 1.4,
+    blurb: 'A wide burst of short-range pellets. Brutal up close, useless far away.',
+  },
+  seeker: {
+    id: 'seeker', name: 'SEEKER', texture: 'bullet_seeker', hitbox: { width: 5, height: 8 }, speed: 320,
+    turnRate: 5, lifetime: 3, launchSpreadDeg: 25, damageScale: 2, intervalScale: 1.5,
+    blurb: 'Slow homing missiles that hit twice as hard. Fewer shots, almost no misses.',
+  },
 };
 
 const A1 = [0];
@@ -112,21 +137,21 @@ export const ABILITIES = {
 
 export const ENEMY_TYPES = {
   drone: {
-    id: 'drone', texture: 'enemy_drone', size: 16, hitbox: 16, hp: 1, speed: 90, score: 10, unlockAt: 0,
+    id: 'drone', texture: 'enemy_drone', size: 16, hitbox: 16, hp: 1, speed: 90, gold: 10, unlockAt: 0,
     color: 0xff4d4d, move: 'straight', fire: null,
   },
   gunner: {
-    id: 'gunner', texture: 'enemy_gunner', size: 18, hitbox: 17, hp: 2, speed: 70, score: 20, unlockAt: 15,
+    id: 'gunner', texture: 'enemy_gunner', size: 18, hitbox: 17, hp: 2, speed: 70, gold: 20, unlockAt: 15,
     color: 0xff9640, move: 'straight',
     fire: { pattern: 'aimed', interval: 1.8, bulletSpeed: 220, bulletTexture: 'ebullet_orange' },
   },
   weaver: {
-    id: 'weaver', texture: 'enemy_weaver', size: 18, hitbox: 17, hp: 2, speed: 80, score: 25, unlockAt: 35,
+    id: 'weaver', texture: 'enemy_weaver', size: 18, hitbox: 17, hp: 2, speed: 80, gold: 25, unlockAt: 35,
     color: 0xb34dff, move: 'sine', sineAmplitude: 60, sinePeriod: 2,
     fire: { pattern: 'down', interval: 2.2, bulletSpeed: 200, bulletTexture: 'ebullet_purple' },
   },
   bulwark: {
-    id: 'bulwark', texture: 'enemy_bulwark', size: 28, hitbox: 27, hp: 5, speed: 50, score: 50, unlockAt: 60,
+    id: 'bulwark', texture: 'enemy_bulwark', size: 28, hitbox: 27, hp: 5, speed: 50, gold: 50, unlockAt: 60,
     color: 0x3dbf5a, move: 'straight',
     fire: { pattern: 'spread', interval: 2.5, bulletSpeed: 200, angles: [-20, 0, 20], bulletTexture: 'ebullet_green' },
   },
@@ -173,7 +198,7 @@ export const BOSS = {
   muzzleOffsetY: 26,
   baseHp: 3000,
   hpPerIndex: 1500,
-  scorePerIndex: 500,
+  goldPerIndex: 500,
   fan: { interval: 1.5, count: 7, spreadDeg: 60, bulletSpeed: 180 },
   burst: { interval: 4, count: 3, gap: 0.15, bulletSpeed: 260 },
   bulletTexture: 'ebullet_boss',
@@ -181,9 +206,52 @@ export const BOSS = {
   hitFlashSeconds: 0.05,
 };
 
-export const SCORING = {
-  survivalPointInterval: 0.5,
-  survivalPointValue: 1,
+export const SURVIVAL_GOLD = {
+  interval: 0.5,
+  amount: 1,
+};
+
+export const BARRIER = {
+  color: 0xffd700,
+};
+
+// Meta progression bought with banked gold between runs (§19).
+export const HANGAR = {
+  major: [
+    {
+      id: 'secondSlot', name: 'SECOND ABILITY SLOT', cost: 5000,
+      blurb: 'Carry two abilities. SPACE fires them in the order you picked them up.',
+    },
+    {
+      id: 'startBarrier', name: 'LAUNCH BARRIER', cost: 5000,
+      blurb: 'Every run starts with a barrier that absorbs one hit.',
+    },
+    { id: 'weapon_lance', name: 'WEAPON: LANCE', cost: 5000, weapon: 'lance', blurb: WEAPONS.lance.blurb },
+    { id: 'weapon_scatter', name: 'WEAPON: SCATTER', cost: 5000, weapon: 'scatter', blurb: WEAPONS.scatter.blurb },
+    { id: 'weapon_seeker', name: 'WEAPON: SEEKER', cost: 5000, weapon: 'seeker', blurb: WEAPONS.seeker.blurb },
+  ],
+  refits: [
+    {
+      id: 'thrusters', name: 'THRUSTERS', perRank: 0.04, costs: [300, 600, 900, 1200, 1500],
+      blurb: '+4% movement speed per rank.',
+    },
+    {
+      id: 'capacitors', name: 'CAPACITORS', perRank: 0.1, costs: [300, 600, 900, 1200, 1500],
+      blurb: 'Timed abilities last 10% longer per rank.',
+    },
+    {
+      id: 'salvage', name: 'SALVAGE SCANNER', perRank: 0.01, costs: [500, 1000, 2000],
+      blurb: '+1% weapon-upgrade drop chance per rank (base 5%).',
+    },
+    {
+      id: 'prospector', name: 'PROSPECTOR', perRank: 0.05, costs: [400, 800, 1200, 1600, 2000],
+      blurb: '+5% gold from every source per rank.',
+    },
+    {
+      id: 'headStart', name: 'HEAD START', perRank: 1, costs: [800, 1600, 3200],
+      blurb: 'Start each run one weapon level higher per rank.',
+    },
+  ],
 };
 
 export const EXPLOSION = {

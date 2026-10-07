@@ -1,6 +1,6 @@
 import { GAME_WIDTH, GAME_HEIGHT, DEPTH, TIMING } from '../config/constants.js';
 import Starfield from '../systems/Starfield.js';
-import { textStyle } from '../ui/Hud.js';
+import { textStyle, formatGold } from '../ui/Hud.js';
 
 const CX = GAME_WIDTH / 2;
 
@@ -20,19 +20,21 @@ export default class GameOverScene extends Phaser.Scene {
 
   create() {
     this.starfield = new Starfield(this);
-    this.retrying = false;
+    this.leaving = false;
+    this.acceptingInput = false;
     const r = this.result;
 
     this.add
-      .text(CX, 200, 'GAME OVER', { ...textStyle(46, '#ff4d4d'), stroke: '#330a0a', strokeThickness: 8 })
+      .text(CX, 180, 'GAME OVER', { ...textStyle(46, '#ff4d4d'), stroke: '#330a0a', strokeThickness: 8 })
       .setOrigin(0.5)
       .setDepth(DEPTH.hud);
 
-    this.add.text(CX, 290, `SCORE  ${r.score}`, textStyle(24, '#ffffff')).setOrigin(0.5).setDepth(DEPTH.hud);
-    this.add.text(CX, 325, `BEST  ${r.best}`, textStyle(18, '#9aa4b5')).setOrigin(0.5).setDepth(DEPTH.hud);
+    this.add.text(CX, 262, `+${formatGold(r.earned)} GOLD`, textStyle(26, '#ffd700')).setOrigin(0.5).setDepth(DEPTH.hud);
+    this.add.text(CX, 298, `BANK  ${formatGold(r.bank)}`, textStyle(16, '#ffffff')).setOrigin(0.5).setDepth(DEPTH.hud);
+    this.add.text(CX, 322, `BEST RUN  ${formatGold(r.best)}`, textStyle(14, '#9aa4b5')).setOrigin(0.5).setDepth(DEPTH.hud);
 
     if (r.isNewBest) {
-      const badge = this.add.text(CX, 360, 'NEW BEST!', textStyle(18, '#ffd700')).setOrigin(0.5).setDepth(DEPTH.hud);
+      const badge = this.add.text(CX, 354, 'NEW BEST RUN!', textStyle(18, '#ffd700')).setOrigin(0.5).setDepth(DEPTH.hud);
       this.tweens.add({ targets: badge, scale: 1.15, duration: 400, yoyo: true, repeat: -1 });
     }
 
@@ -42,29 +44,40 @@ export default class GameOverScene extends Phaser.Scene {
       `SENTINELS DESTROYED  ${r.bossesDefeated}`,
     ];
     stats.forEach((line, i) => {
-      this.add.text(CX, 420 + i * 26, line, textStyle(14, '#7fa9b5')).setOrigin(0.5).setDepth(DEPTH.hud);
+      this.add.text(CX, 414 + i * 26, line, textStyle(14, '#7fa9b5')).setOrigin(0.5).setDepth(DEPTH.hud);
     });
 
-    const prompt = this.add
-      .text(CX, GAME_HEIGHT - 150, 'PRESS R OR CLICK TO RETRY', textStyle(18, '#4dff88'))
-      .setOrigin(0.5)
-      .setDepth(DEPTH.hud);
-    this.tweens.add({ targets: prompt, alpha: 0.25, duration: 600, yoyo: true, repeat: -1 });
+    const retry = this.button(GAME_HEIGHT - 190, 'R  RETRY', 18, '#4dff88', 'GameScene');
+    this.tweens.add({ targets: retry, alpha: 0.35, duration: 600, yoyo: true, repeat: -1 });
+    this.button(GAME_HEIGHT - 150, 'H  HANGAR', 15, '#ffd700', 'HangarScene');
+    this.button(GAME_HEIGHT - 120, 'M  MENU', 15, '#c9d3e0', 'MenuScene');
 
     // Short delay so a key or click held from the moment of death doesn't skip this screen.
     this.time.delayedCall(TIMING.gameOverInputDelayMs, () => {
-      this.input.keyboard.once('keydown-R', () => this.retry());
-      this.input.once('pointerdown', () => this.retry());
+      this.acceptingInput = true;
+      const keyboard = this.input.keyboard;
+      keyboard.on('keydown-R', () => this.go('GameScene'));
+      keyboard.on('keydown-H', () => this.go('HangarScene'));
+      keyboard.on('keydown-M', () => this.go('MenuScene'));
     });
+  }
+
+  button(y, label, size, color, sceneKey) {
+    return this.add
+      .text(CX, y, label, textStyle(size, color))
+      .setOrigin(0.5)
+      .setDepth(DEPTH.hud)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.go(sceneKey));
   }
 
   update(time, delta) {
     this.starfield.update(delta / 1000);
   }
 
-  retry() {
-    if (this.retrying) return;
-    this.retrying = true;
-    this.scene.start('GameScene');
+  go(sceneKey) {
+    if (!this.acceptingInput || this.leaving) return;
+    this.leaving = true;
+    this.scene.start(sceneKey);
   }
 }

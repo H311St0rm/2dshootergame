@@ -1,0 +1,103 @@
+import { PROFILE_KEY, LEGACY_HIGH_SCORE_KEY, HANGAR, WEAPONS, WEAPON_ORDER } from '../config/constants.js';
+
+export const HANGAR_ITEMS = Object.fromEntries([...HANGAR.major, ...HANGAR.refits].map((item) => [item.id, item]));
+
+function emptyProfile() {
+  return { gold: 0, best: 0, unlocks: {}, ranks: {}, weapon: 'blaster' };
+}
+
+const isCount = (value) => Number.isFinite(value) && value >= 0;
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+// Storage can be missing, blocked or hand-edited; anything unreadable falls back to defaults.
+export function loadProfile() {
+  const profile = emptyProfile();
+  try {
+    const raw = window.localStorage.getItem(PROFILE_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (isCount(saved.gold)) profile.gold = Math.floor(saved.gold);
+      if (isCount(saved.best)) profile.best = Math.floor(saved.best);
+      if (isPlainObject(saved.unlocks)) profile.unlocks = saved.unlocks;
+      if (isPlainObject(saved.ranks)) profile.ranks = saved.ranks;
+      if (WEAPONS[saved.weapon]) profile.weapon = saved.weapon;
+    } else {
+      const legacyBest = parseInt(window.localStorage.getItem(LEGACY_HIGH_SCORE_KEY), 10);
+      if (isCount(legacyBest)) profile.best = legacyBest;
+    }
+  } catch {
+    // Unreadable storage: play with a fresh profile.
+  }
+  if (!isWeaponUnlocked(profile, profile.weapon)) profile.weapon = 'blaster';
+  return profile;
+}
+
+export function saveProfile(profile) {
+  try {
+    window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  } catch {
+    // Storage unavailable: progress lasts for this session only.
+  }
+}
+
+export function rankOf(profile, id) {
+  const item = HANGAR_ITEMS[id];
+  const rank = profile.ranks[id];
+  return isCount(rank) ? Math.min(Math.floor(rank), item.costs.length) : 0;
+}
+
+export function isOwned(profile, id) {
+  return profile.unlocks[id] === true;
+}
+
+export function isWeaponUnlocked(profile, weaponId) {
+  return weaponId === 'blaster' || isOwned(profile, `weapon_${weaponId}`);
+}
+
+export function unlockedWeapons(profile) {
+  return WEAPON_ORDER.filter((id) => isWeaponUnlocked(profile, id));
+}
+
+// Returns null once the item is owned or fully ranked.
+export function nextCost(profile, item) {
+  if (item.costs) {
+    const rank = rankOf(profile, item.id);
+    return rank < item.costs.length ? item.costs[rank] : null;
+  }
+  return isOwned(profile, item.id) ? null : item.cost;
+}
+
+export function purchase(profile, item) {
+  const cost = nextCost(profile, item);
+  if (cost === null || profile.gold < cost) return false;
+  profile.gold -= cost;
+  if (item.costs) profile.ranks[item.id] = rankOf(profile, item.id) + 1;
+  else profile.unlocks[item.id] = true;
+  if (item.weapon) profile.weapon = item.weapon;
+  saveProfile(profile);
+  return true;
+}
+
+// Adds a finished run's gold to the bank; returns whether it set a new best run.
+export function bankRun(profile, gold) {
+  const earned = Math.floor(gold);
+  profile.gold += earned;
+  const isNewBest = earned > profile.best;
+  if (isNewBest) profile.best = earned;
+  saveProfile(profile);
+  return isNewBest;
+}
+
+export function runModifiers(profile) {
+  const bonus = (id) => rankOf(profile, id) * HANGAR_ITEMS[id].perRank;
+  return {
+    weapon: profile.weapon,
+    abilitySlots: isOwned(profile, 'secondSlot') ? 2 : 1,
+    startBarrier: isOwned(profile, 'startBarrier'),
+    moveSpeedMul: 1 + bonus('thrusters'),
+    abilityDurationMul: 1 + bonus('capacitors'),
+    upgradeDropBonus: bonus('salvage'),
+    goldMul: 1 + bonus('prospector'),
+    startLevel: bonus('headStart'),
+  };
+}
