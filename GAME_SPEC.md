@@ -19,7 +19,8 @@ doubles as your only life bar, since getting hit strips upgrades away
 instead of costing a health point. Survive as long as possible against an
 endlessly escalating threat. Gold earned in each run is banked and spent in
 the Hangar on permanent upgrades: new weapons, a second ability slot, a
-launch barrier, and stackable refits (§19).
+launch barrier, stackable refits (§19), and defensive secondary weapons that
+fight alongside the ship automatically (§20).
 
 ## 2. Core loop
 
@@ -70,6 +71,7 @@ src/
     AbilityManager.js        # Holds 1-2 ability slots (§8, §19), handles activation and timers
     WeaponManager.js         # Weapon level, the hit/level-loss/death rule (§8b), and each weapon's volley shape (§19)
     BossManager.js           # Tracks both boss-trigger counters and runs the encounter (§7b)
+    SecondaryManager.js      # The equipped defensive secondary: drones, tesla arcs or repulsor field (§20)
     Starfield.js             # Parallax scrolling background
     Sfx.js                   # Procedural Web Audio sound effects (§15)
     profile.js               # Saved bank, best run, purchases and chosen weapon; run modifiers (§13, §19)
@@ -91,7 +93,7 @@ In a run, only movement and the ability key matter. No touch required for v1; me
 | Spacebar | Activate the next held ability (no-op if nothing held) |
 | P **or** Esc | Pause / resume |
 
-On the start screen, Left/Right (or A/D) choose the starting weapon, Enter or Space launches, and H opens the Hangar (§19).
+On the start screen, Up/Down (or W/S) pick the PRIMARY or SECONDARY row, Left/Right (or A/D) change it, Enter or Space launches, and H opens the Hangar (§19, §20).
 
 Movement is free 2D, not lane-based. Diagonal movement must be normalized so diagonal speed equals straight-line speed (don't let diagonals be faster).
 
@@ -264,6 +266,7 @@ Required generated textures:
 - Player projectiles: Blaster bullet (4×10), Lance beam (2×16), Scatter pellet (4×4), Seeker missile (4×8)
 - Enemy bullet (6×6)
 - Launch Barrier ring (34×34, thin gold double circle)
+- Escort drone (10×10, cyan) and the deflected-bullet dot (6×6, the enemy bullet shape in mint green). Tesla arcs and the Repulsor Field circle are drawn live with vector graphics.
 - 5 ability pickup icons (14×14 each, one per ability color above)
 - 1 weapon upgrade pickup icon (14×14, gold `#ffd700` chevron — visually distinct shape from the ability orbs)
 - A small square particle (4×4, white) reused (tinted per-enemy-color) for explosion bursts
@@ -306,6 +309,8 @@ Two independent difficulty systems, driven by two different things: how long you
 | Player ↔ Ability pickup | Collected into the ability slots per §8's fill/replace rule; pickup removed; small collect flash. |
 | Player ↔ Upgrade pickup | Weapon level +1 (capped at `weaponLevelMax`) per §8b; pickup removed; small collect flash. |
 
+Kills by a secondary weapon (§20) — tesla arcs, field burn, or deflected shots — count like bullet-kills: they award gold, roll drops and count toward the boss triggers.
+
 All bullets/enemies/pickups are destroyed and removed once they fully exit the screen bounds (with a small margin) to avoid unbounded object growth.
 
 ## 12. HUD
@@ -313,6 +318,7 @@ All bullets/enemies/pickups are destroyed and removed once they fully exit the s
 - **Top-left:** Weapon Level meter — a bar filled to `(weaponLevel - weaponLevelMin) / (weaponLevelMax - weaponLevelMin)`, labeled with the exact numeric level (e.g. "LVL 8"). Empty means the next hit is lethal. Using a fraction rather than fixed pips means it reads correctly even after the range widens via a prestige (§7b). This single meter replaces a traditional health bar; see §8b. The equipped weapon's name sits under the meter.
 - **Top-right:** Live gold ("GOLD 1,234"), with "BEST RUN N" directly beneath it.
 - **Bottom-center:** One ability slot box, or two side by side with the Second Ability Slot (§19). Empty slots are greyed outlines. Slot 1 shows its icon brightly with its name to the left and a pulsing "[SPACE]" hint to the right; slot 2's icon is dimmed as the queued one.
+- **Bottom-right (only with a secondary equipped):** the secondary's name over an 84px charge bar that fills during its cooldown and turns bright when it's ready (§20).
 - **Top-center (optional but recommended):** Survival timer as `mm:ss`.
 - **Below the survival timer, only while weapon level equals `weaponLevelMax`:** the flawless-streak progress, e.g. "Streak: 67/100" (§7b).
 - **While a boss is active:** a boss HP bar spanning the top of the screen, labeled "THE SENTINEL", replacing the streak readout for the fight's duration.
@@ -331,7 +337,7 @@ What used to be "score" is **gold**, and it is both the run's score and the curr
 ## 14. Scene flow
 
 1. **BootScene** — generates all procedural textures (§9), then immediately starts `MenuScene`. No visible content of its own.
-2. **MenuScene** — the start screen: title, weapon select with a volley preview (§19), controls, the gold bank and best run, "ENTER LAUNCH" (starts `GameScene`) and "H HANGAR" (opens `HangarScene`). Both prompts are also clickable.
+2. **MenuScene** — the start screen: title, a two-row loadout (primary weapon with a volley preview, §19; secondary weapon shown around the ship, §20), controls, the gold bank and best run, "ENTER LAUNCH" (starts `GameScene`) and "H HANGAR" (opens `HangarScene`). Both prompts are also clickable.
 3. **HangarScene** — the upgrade shop (§19). Esc, H or Backspace returns to `MenuScene`.
 4. **GameScene** — full gameplay as specified above. On player death, banks the run's gold and transitions to `GameOverScene`.
 5. **GameOverScene** — shows "GAME OVER", gold earned this run, the bank total, best run (with a "NEW BEST RUN!" badge when beaten), time survived, max weapon level and Sentinels destroyed. After a 0.5s input delay: R retries (straight back into `GameScene`), H opens the Hangar, M returns to the start screen; each is also clickable.
@@ -382,6 +388,11 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] Left/Right on the start screen cycles only unlocked weapons, and the chosen weapon is the one used in the run.
 - [ ] Lance beams pierce one enemy; Scatter pellets vanish at 320px; Seeker missiles home onto the nearest enemy; Rapid Fire and Spread Shot scale every weapon proportionally.
 - [ ] The Launch Barrier absorbs exactly the first unblocked hit of a run without costing levels or breaking the streak.
+- [ ] Each secondary sells in 6 ranks at its listed escalating prices, buying a rank equips it, and Up/Down + Left/Right on the start screen choose among unlocked secondaries.
+- [ ] Escort Drone shoots down the bullet nearest the ship within 260px on its cooldown (5s → 1s), with a second, staggered drone at rank 6.
+- [ ] Tesla Coil arcs into the nearest enemies, Sentinel and bullets within range, capped per rank, on its cooldown (2s/60px → 0.5s/130px).
+- [ ] Repulsor Field burns enemies inside it every 0.5s and, on its cooldown (8s → 2s), turns every bullet inside it into a player shot aimed at the nearest enemy.
+- [ ] Every secondary holds its charge when nothing is in range, and its kills award gold and drops.
 
 ## 18. Notes for the implementing AI
 
@@ -418,7 +429,7 @@ Opened with H from the start screen or the Game Over screen. Up/Down or W/S sele
 | Prospector | +5% gold from every source | 5 | 400 / 800 / 1,200 / 1,600 / 2,000 |
 | Head Start | Start each run one weapon level higher (smoothed enemy count starts there too) | 3 | 800 / 1,600 / 3,200 |
 
-Buying everything costs 49,100 gold (25,000 for the majors, 24,100 for all refit ranks).
+Buying every major upgrade and refit rank costs 49,100 gold (25,000 for the majors, 24,100 for the refits). The Hangar's third section sells the secondary weapons (§20), which add 93,500 more for all ranks of all three.
 
 ### Second Ability Slot
 
@@ -445,4 +456,63 @@ All four weapons read the same level table (§8b) and reshape it, so upgrades, t
 ### Choosing a weapon
 
 - The start screen shows the equipped weapon: a still preview of one volley at weapon level 6 above the ship, the name between `<` and `>`, a one-line description, and one dot per weapon (filled for unlocked, outlined for locked, larger and cyan for the equipped one). A line under the dots says how many weapons remain to unlock.
-- Left/Right or A/D (or clicking the arrows) cycles through **unlocked** weapons only. The choice is saved and used for every run until changed; buying a weapon in the Hangar equips it.
+- Left/Right or A/D (or clicking the arrows) cycles through **unlocked** weapons only while the PRIMARY row is focused (Up/Down switch rows; see §20 for the SECONDARY row). The choice is saved and used for every run until changed; buying a weapon in the Hangar equips it.
+
+## 20. Secondary weapons (defensive)
+
+A secondary weapon fights alongside the ship automatically — it needs no button. The player equips one at a time. Each is bought in the Hangar's third section, SECONDARY WEAPONS, in 6 ranks with escalating prices; buying any rank equips that secondary. Ranks are permanent.
+
+### Shared rules
+
+- **Holding a charge:** every secondary counts its cooldown up to full and then waits. If nothing is in range when it's ready, it holds the charge and fires the instant a target appears.
+- **Kills** by a secondary award gold, roll drops and count toward boss triggers, exactly like bullet-kills (§11).
+- **The Sentinel** counts as an enemy for the Tesla Coil and the field's burn, measured to the edge of its body (about 28px from its center). Secondaries ignore Overdrive.
+- **Selecting:** on the start screen, Up/Down (W/S) focus the PRIMARY or SECONDARY row; with SECONDARY focused, Left/Right (A/D) cycle through unlocked secondaries. The row shows the secondary's name, rank ("ESCORT DRONE  R6") and current stats, and its look is previewed around the ship. With none bought, it reads NONE.
+- **HUD:** the bottom-right gauge (§12).
+- **Hangar text:** a secondary's row description shows the current rank's stats and the next rank's ("NOW: … NEXT: …").
+
+### Escort Drone
+
+Small cyan drones hover beside the ship (26px to each side, 6px below, easing after it) and each shoots down the enemy bullet nearest the ship, if one is within 260px, with an instant laser.
+
+| Rank | Cooldown | Drones | Cost |
+|---|---|---|---|
+| 1 | 5s | 1 | 1,500 |
+| 2 | 4s | 1 | 2,500 |
+| 3 | 3s | 1 | 3,500 |
+| 4 | 2s | 1 | 5,000 |
+| 5 | 1s | 1 | 7,000 |
+| 6 | 1s | 2 | 10,000 |
+
+At rank 6 the second drone starts half a cooldown behind the first, so the pair alternate shots. Each drone has its own cooldown.
+
+### Tesla Coil
+
+On its cooldown, arcs jagged lightning from the ship to the nearest targets within range — enemies (2 damage), the Sentinel (2 damage) and enemy bullets (destroyed) — nearest first, up to the rank's target cap.
+
+| Rank | Cooldown | Range | Max targets | Cost |
+|---|---|---|---|---|
+| 1 | 2s | 60px | 3 | 2,000 |
+| 2 | 1.6s | 74px | 4 | 3,000 |
+| 3 | 1.25s | 88px | 5 | 4,000 |
+| 4 | 1s | 102px | 6 | 5,500 |
+| 5 | 0.75s | 116px | 7 | 7,500 |
+| 6 | 0.5s | 130px | 8 | 10,000 |
+
+### Repulsor Field
+
+A translucent mint circle around the ship.
+
+- **Burn:** every 0.5s, every enemy (and the Sentinel) touching the field takes 1 damage.
+- **Deflect:** on its cooldown, if any enemy bullets are inside the field, all of them are thrown back at once: each becomes a player shot (6×6 mint dot, 8×6 hitbox, 360 px/s, 3 damage) aimed at the nearest on-screen enemy, or straight back the way it came if there is none. The circle glows brighter while the deflect is charged.
+
+| Rank | Deflect cooldown | Field radius | Cost |
+|---|---|---|---|
+| 1 | 8s | 56px | 2,000 |
+| 2 | 6.5s | 60px | 3,000 |
+| 3 | 5s | 64px | 4,000 |
+| 4 | 4s | 68px | 5,500 |
+| 5 | 3s | 72px | 7,500 |
+| 6 | 2s | 76px | 10,000 |
+
+Fully upgrading a secondary costs 29,500 (Escort Drone) or 32,000 (Tesla Coil, Repulsor Field).

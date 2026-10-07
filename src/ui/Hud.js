@@ -5,6 +5,7 @@ const METER = { x: 12, y: 30, width: 128, height: 8 };
 const BOSS_BAR = { x: 40, y: 68, width: 400, height: 8 };
 const SLOT = { x: GAME_WIDTH / 2, y: GAME_HEIGHT - 26, size: 36, gap: 8 };
 const EFFECT = { x: 18, y: GAME_HEIGHT - 20, rowGap: 20, barWidth: 56, barHeight: 5 };
+const SECONDARY = { right: GAME_WIDTH - 12, y: GAME_HEIGHT - 36, barWidth: 84, barHeight: 4 };
 
 const COLORS = {
   meter: 0x4de3ff,
@@ -59,6 +60,9 @@ export default class Hud {
     this.slotName = text(firstX - SLOT.size / 2 - 8, SLOT.y, 12, '#ffffff', 1, 0.5);
     this.slotHint = text(lastX + SLOT.size / 2 + 8, SLOT.y, 12, '#ffffff', 0, 0.5).setText('[SPACE]');
 
+    this.secondaryText = text(SECONDARY.right, SECONDARY.y, 10, '#7fa9b5', 1);
+    this.secondaryBar = add.graphics().setDepth(DEPTH.hud);
+
     this.effectBars = add.graphics().setDepth(DEPTH.hud);
     this.effectIcons = Object.fromEntries(
       TIMED_ABILITIES.map((kind) => [kind, add.image(0, 0, `pickup_${kind}`).setDepth(DEPTH.hud).setVisible(false)]),
@@ -81,6 +85,22 @@ export default class Hud {
     this.drawBossBar(state);
     this.drawAbilitySlots(state.abilities.slots);
     this.drawActiveEffects(state.abilities);
+    this.drawSecondary(state.secondary);
+  }
+
+  drawSecondary(secondary) {
+    const g = this.secondaryBar;
+    g.clear();
+    this.secondaryText.setVisible(Boolean(secondary));
+    if (!secondary) return;
+    const readiness = secondary.readiness;
+    this.secondaryText.setText(secondary.name);
+    const left = SECONDARY.right - SECONDARY.barWidth;
+    const y = SECONDARY.y + 16;
+    g.fillStyle(COLORS.track, 1);
+    g.fillRect(left, y, SECONDARY.barWidth, SECONDARY.barHeight);
+    g.fillStyle(secondary.color, readiness >= 1 ? 1 : 0.45);
+    g.fillRect(left, y, SECONDARY.barWidth * readiness, SECONDARY.barHeight);
   }
 
   drawWeaponMeter({ level, min, max }) {

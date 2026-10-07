@@ -1,6 +1,6 @@
 import {
-  PLAYER, PLAYER_BULLET, WEAPONS, DROPS, ABILITIES, ABILITY_KEYS, BOSS, SURVIVAL_GOLD, BARRIER, EXPLOSION,
-  TIMING, DEPTH, MAX_FRAME_DT,
+  PLAYER, PLAYER_BULLET, WEAPONS, DEFLECT_SHOT, DROPS, ABILITIES, ABILITY_KEYS, BOSS, SURVIVAL_GOLD, BARRIER,
+  EXPLOSION, TIMING, DEPTH, MAX_FRAME_DT,
 } from '../config/constants.js';
 import Player from '../entities/Player.js';
 import Enemy from '../entities/Enemy.js';
@@ -12,6 +12,7 @@ import AbilityManager from '../systems/AbilityManager.js';
 import DifficultyManager from '../systems/DifficultyManager.js';
 import SpawnManager from '../systems/SpawnManager.js';
 import BossManager from '../systems/BossManager.js';
+import SecondaryManager from '../systems/SecondaryManager.js';
 import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
 import { loadProfile, runModifiers, bankRun } from '../systems/profile.js';
@@ -49,6 +50,7 @@ export default class GameScene extends Phaser.Scene {
     this.difficulty.smoothedWeaponLevel = this.mods.startLevel;
     this.spawner = new SpawnManager(this.difficulty, (type, x) => this.spawnEnemy(type, x));
     this.bosses = new BossManager(this);
+    this.secondary = new SecondaryManager(this, this.mods.secondary, this.mods.secondaryRank);
     this.hud = new Hud(this, this.abilities.capacity);
     this.emitters = new Map();
 
@@ -126,6 +128,7 @@ export default class GameScene extends Phaser.Scene {
 
     const shielded = this.abilities.isActive('shield');
     this.player.tick(dt, shielded);
+    this.secondary.update(dt);
     this.updateShieldRing(shielded);
     this.barrierRing.setVisible(this.hasBarrier && this.player.alive).setPosition(this.player.x, this.player.y);
     this.hud.update(dt, this.hudState());
@@ -172,6 +175,7 @@ export default class GameScene extends Phaser.Scene {
       bossHp: boss.hp,
       bossMaxHp: boss.maxHp,
       abilities: this.abilities,
+      secondary: this.secondary.id ? this.secondary : null,
     };
   }
 
@@ -258,7 +262,30 @@ export default class GameScene extends Phaser.Scene {
   onBulletHitEnemy(bullet, enemy) {
     if (!bullet.active || !enemy.active) return;
     if (!bullet.registerHit(enemy.uid)) return;
-    if (enemy.damage(bullet.damage)) this.killEnemy(enemy, 'bullet');
+    this.damageEnemy(enemy, bullet.damage, 'bullet');
+  }
+
+  // --- Hooks for secondary weapons (§20) -----------------------------------
+
+  damageEnemy(enemy, amount, cause) {
+    if (enemy.damage(amount)) this.killEnemy(enemy, cause);
+  }
+
+  destroyEnemyBullet(bullet) {
+    this.explode(bullet.x, bullet.y, 0xbfe9ff, 3);
+    bullet.disableBody(true, true);
+  }
+
+  // Turns an enemy bullet into a player shot aimed at the nearest enemy,
+  // or straight back the way it came when nothing is on screen.
+  deflectBullet(bullet, damage) {
+    const { x, y } = bullet;
+    const target = this.nearestTarget(x, y);
+    const heading = target
+      ? Math.atan2(target.x - x, y - target.y)
+      : Math.atan2(-bullet.baseVx, bullet.baseVy);
+    bullet.disableBody(true, true);
+    this.playerBullets.get(x, y).fire(x, y, Phaser.Math.RadToDeg(heading), damage, DEFLECT_SHOT);
   }
 
   onPlayerRam(enemy) {

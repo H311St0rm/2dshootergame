@@ -1,14 +1,20 @@
 import { GAME_WIDTH, HANGAR } from '../config/constants.js';
 import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
+import { describeSecondary } from '../systems/SecondaryManager.js';
 import { loadProfile, purchase, nextCost, rankOf, isOwned } from '../systems/profile.js';
 import { textStyle, formatGold } from '../ui/Hud.js';
 
 const CX = GAME_WIDTH / 2;
-const ROW = { left: 24, right: GAME_WIDTH - 24, height: 34, step: 40 };
-const MAJOR_TOP = 166;
-const REFIT_TOP = MAJOR_TOP + HANGAR.major.length * ROW.step + 46;
-const FOOTER_TOP = REFIT_TOP + HANGAR.refits.length * ROW.step + 6;
+const ROW = { left: 24, right: GAME_WIDTH - 24, height: 28, step: 32 };
+const GROUPS = [
+  { label: 'MAJOR UPGRADES - BUY ONCE', items: HANGAR.major },
+  { label: 'REFITS - STACKABLE RANKS', items: HANGAR.refits },
+  { label: 'SECONDARY WEAPONS - UPGRADE RANKS', items: HANGAR.secondaries },
+];
+const FIRST_LABEL_Y = 96;
+const LABEL_TO_ROW = 22;
+const ROW_TO_LABEL = 30;
 const PIP = { size: 8, gap: 3, rightEdge: ROW.right - 72 };
 
 const COLORS = {
@@ -27,35 +33,41 @@ export default class HangarScene extends Phaser.Scene {
     this.starfield = new Starfield(this);
     this.sfx = new Sfx(this);
     this.profile = loadProfile();
-    this.items = [...HANGAR.major, ...HANGAR.refits];
     this.selected = 0;
     this.leaving = false;
 
-    this.add.text(CX, 50, 'HANGAR', { ...textStyle(34, '#4de3ff'), stroke: '#0a2a33', strokeThickness: 6 }).setOrigin(0.5);
-    this.goldText = this.add.text(CX, 96, '', textStyle(18, '#ffd700')).setOrigin(0.5);
-    this.add.text(ROW.left, MAJOR_TOP - 30, 'MAJOR UPGRADES - BUY ONCE', textStyle(11, '#7fa9b5'));
-    this.add.text(ROW.left, REFIT_TOP - 30, 'REFITS - STACKABLE RANKS', textStyle(11, '#7fa9b5'));
+    this.add.text(CX, 34, 'HANGAR', { ...textStyle(32, '#4de3ff'), stroke: '#0a2a33', strokeThickness: 6 }).setOrigin(0.5);
+    this.goldText = this.add.text(CX, 68, '', textStyle(17, '#ffd700')).setOrigin(0.5);
 
     this.highlight = this.add.graphics();
     this.pips = this.add.graphics();
-    this.rows = this.items.map((item, i) => {
-      const y = this.rowY(i);
-      this.add
-        .zone(CX, y, ROW.right - ROW.left, ROW.height)
-        .setInteractive({ useHandCursor: true })
-        .on('pointerdown', () => this.select(i));
-      const name = this.add.text(ROW.left + 10, y, item.name, textStyle(14)).setOrigin(0, 0.5);
-      const status = this.add.text(ROW.right - 10, y, '', textStyle(13)).setOrigin(1, 0.5);
-      return { item, y, name, status };
-    });
+    this.rows = [];
+    let y = FIRST_LABEL_Y;
+    for (const group of GROUPS) {
+      this.add.text(ROW.left, y, group.label, textStyle(11, '#7fa9b5')).setOrigin(0, 0.5);
+      y += LABEL_TO_ROW;
+      for (const item of group.items) {
+        const index = this.rows.length;
+        this.add
+          .zone(CX, y, ROW.right - ROW.left, ROW.height)
+          .setInteractive({ useHandCursor: true })
+          .on('pointerdown', () => this.select(index));
+        const name = this.add.text(ROW.left + 10, y, item.name, textStyle(14)).setOrigin(0, 0.5);
+        const status = this.add.text(ROW.right - 10, y, '', textStyle(13)).setOrigin(1, 0.5);
+        this.rows.push({ item, y, name, status });
+        y += ROW.step;
+      }
+      y += ROW_TO_LABEL - ROW.step + LABEL_TO_ROW / 2;
+    }
 
-    this.add.rectangle(CX, FOOTER_TOP, ROW.right - ROW.left, 1, 0x2a3240).setOrigin(0.5, 0);
+    const footerTop = y;
+    this.add.rectangle(CX, footerTop, ROW.right - ROW.left, 1, 0x2a3240).setOrigin(0.5, 0);
     this.blurb = this.add
-      .text(CX, FOOTER_TOP + 16, '', { ...textStyle(13, '#c9d3e0'), align: 'center', wordWrap: { width: 420 } })
+      .text(CX, footerTop + 12, '', { ...textStyle(12, '#c9d3e0'), align: 'center', wordWrap: { width: 430 } })
       .setOrigin(0.5, 0);
-    this.message = this.add.text(CX, FOOTER_TOP + 78, '', textStyle(13)).setOrigin(0.5);
-    this.buyButton = this.button(CX - 90, FOOTER_TOP + 114, 'ENTER  BUY', '#4dff88', () => this.buy());
-    this.button(CX + 90, FOOTER_TOP + 114, 'ESC  BACK', '#ffd700', () => this.back());
+    this.message = this.add.text(CX, footerTop + 94, '', textStyle(13)).setOrigin(0.5);
+    this.buyButton = this.button(CX - 90, footerTop + 126, 'ENTER  BUY', '#4dff88', () => this.buy());
+    this.button(CX + 90, footerTop + 126, 'ESC  BACK', '#ffd700', () => this.back());
 
     const keyboard = this.input.keyboard;
     const onKey = (handler) => (event) => {
@@ -86,13 +98,8 @@ export default class HangarScene extends Phaser.Scene {
       .on('pointerdown', onClick);
   }
 
-  rowY(index) {
-    const majors = HANGAR.major.length;
-    return index < majors ? MAJOR_TOP + index * ROW.step : REFIT_TOP + (index - majors) * ROW.step;
-  }
-
   move(direction) {
-    this.select((this.selected + direction + this.items.length) % this.items.length);
+    this.select((this.selected + direction + this.rows.length) % this.rows.length);
   }
 
   select(index) {
@@ -102,7 +109,7 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   buy() {
-    const item = this.items[this.selected];
+    const item = this.rows[this.selected].item;
     const cost = nextCost(this.profile, item);
     if (cost === null) {
       this.showMessage(item.costs ? 'ALREADY AT MAX RANK' : 'ALREADY OWNED', COLORS.owned);
@@ -115,13 +122,13 @@ export default class HangarScene extends Phaser.Scene {
     }
     this.sfx.levelUp();
     const suffix = item.costs ? ` - RANK ${rankOf(this.profile, item.id)}` : '';
-    const equipped = item.weapon ? ' - EQUIPPED' : '';
+    const equipped = item.weapon || item.secondary ? ' - EQUIPPED' : '';
     this.showMessage(`BOUGHT ${item.name}${suffix}${equipped}`, COLORS.owned);
     this.refresh();
   }
 
   showMessage(text, color) {
-    this.message.setText(text).setColor(color).setAlpha(1);
+    this.message.setText(text).setColor(color);
   }
 
   back() {
@@ -155,10 +162,19 @@ export default class HangarScene extends Phaser.Scene {
     g.lineStyle(1, 0x4de3ff, 0.8);
     g.strokeRect(ROW.left, row.y - ROW.height / 2, ROW.right - ROW.left, ROW.height);
 
-    const item = row.item;
-    const rankLine = item.costs ? `\nRANK ${rankOf(this.profile, item.id)} OF ${item.costs.length}` : '';
-    this.blurb.setText(`${item.blurb}${rankLine}`);
-    this.buyButton.setAlpha(nextCost(this.profile, item) === null ? 0.35 : 1);
+    this.blurb.setText(this.describe(row.item));
+    this.buyButton.setAlpha(nextCost(this.profile, row.item) === null ? 0.35 : 1);
+  }
+
+  describe(item) {
+    if (!item.costs) return item.blurb;
+    const rank = rankOf(this.profile, item.id);
+    const max = item.costs.length;
+    if (!item.secondary) return `${item.blurb}\nRANK ${rank} OF ${max}`;
+    const id = item.secondary;
+    if (rank === 0) return `${item.blurb}\nRANK 1: ${describeSecondary(id, 1)}`;
+    if (rank === max) return `${item.blurb}\nMAX RANK: ${describeSecondary(id, rank)}`;
+    return `${item.blurb}\nNOW: ${describeSecondary(id, rank)}\nNEXT: ${describeSecondary(id, rank + 1)}`;
   }
 
   drawPips(y, rank, max) {

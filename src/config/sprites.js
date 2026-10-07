@@ -183,6 +183,19 @@ export const SPRITES = {
     ],
   },
 
+  drone: {
+    scale: 2,
+    mirror: 'odd',
+    palette: { c: 0x7ff0ff, d: 0x1a6b80, w: 0xffffff },
+    rows: [
+      '.dd',
+      'dcw',
+      'dcc',
+      '.dc',
+      'd..',
+    ],
+  },
+
   particle: {
     scale: 2,
     palette: { w: 0xffffff },
@@ -211,6 +224,8 @@ export const ENEMY_BULLET_COLORS = {
   ebullet_purple: { rim: 0xb34dff, core: 0xf2dcff },
   ebullet_green: { rim: 0x3dbf5a, core: 0xdcffe4 },
   ebullet_boss: { rim: 0xff3b3b, core: 0xffe0e0 },
+  // Same dot shape, recolored, for enemy bullets the Repulsor Field throws back.
+  bullet_deflect: { rim: 0x4dffb0, core: 0xe0fff0 },
 };
 
 // 6x6 glyphs drawn in white on top of each ability pickup's diamond.

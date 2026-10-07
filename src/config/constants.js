@@ -206,6 +206,48 @@ export const BOSS = {
   hitFlashSeconds: 0.05,
 };
 
+// Defensive secondary weapons (§20). One is equipped at a time; per-rank values
+// are listed explicitly so each Hangar rank's effect is easy to read and tune.
+export const SECONDARY_ORDER = ['drone', 'tesla', 'field'];
+
+export const SECONDARIES = {
+  drone: {
+    id: 'drone', name: 'ESCORT DRONE', color: 0x7ff0ff,
+    blurb: 'A drone flies beside you and shoots down the enemy bullet closest to you.',
+    costs: [1500, 2500, 3500, 5000, 7000, 10000],
+    cooldowns: [5, 4, 3, 2, 1, 1],
+    droneCounts: [1, 1, 1, 1, 1, 2],
+    range: 260,
+    offsetX: 26,
+    offsetY: 6,
+    followRate: 12,
+  },
+  tesla: {
+    id: 'tesla', name: 'TESLA COIL', color: 0xbfe9ff,
+    blurb: 'Arcs lightning into nearby enemies and bullets, nearest first.',
+    costs: [2000, 3000, 4000, 5500, 7500, 10000],
+    cooldowns: [2, 1.6, 1.25, 1, 0.75, 0.5],
+    ranges: [60, 74, 88, 102, 116, 130],
+    maxTargets: [3, 4, 5, 6, 7, 8],
+    damage: 2,
+  },
+  field: {
+    id: 'field', name: 'REPULSOR FIELD', color: 0x4dffb0,
+    blurb: 'Burns enemies inside it, and on cooldown hurls every bullet inside it back at them.',
+    costs: [2000, 3000, 4000, 5500, 7500, 10000],
+    deflectCooldowns: [8, 6.5, 5, 4, 3, 2],
+    radii: [56, 60, 64, 68, 72, 76],
+    tickInterval: 0.5,
+    tickDamage: 1,
+    deflectDamage: 3,
+  },
+};
+
+// Bullets thrown back by the Repulsor Field fly as player shots.
+export const DEFLECT_SHOT = {
+  id: 'deflect', name: 'DEFLECT', texture: 'bullet_deflect', hitbox: { width: 8, height: 6 }, speed: 360,
+};
+
 export const SURVIVAL_GOLD = {
   interval: 0.5,
   amount: 1,
@@ -252,6 +294,13 @@ export const HANGAR = {
       blurb: 'Start each run one weapon level higher per rank.',
     },
   ],
+  secondaries: SECONDARY_ORDER.map((id) => ({
+    id: `secondary_${id}`,
+    name: SECONDARIES[id].name,
+    secondary: id,
+    costs: SECONDARIES[id].costs,
+    blurb: SECONDARIES[id].blurb,
+  })),
 };
 
 export const EXPLOSION = {

@@ -1,9 +1,13 @@
-import { PROFILE_KEY, LEGACY_HIGH_SCORE_KEY, HANGAR, WEAPONS, WEAPON_ORDER } from '../config/constants.js';
+import {
+  PROFILE_KEY, LEGACY_HIGH_SCORE_KEY, HANGAR, WEAPONS, WEAPON_ORDER, SECONDARIES, SECONDARY_ORDER,
+} from '../config/constants.js';
 
-export const HANGAR_ITEMS = Object.fromEntries([...HANGAR.major, ...HANGAR.refits].map((item) => [item.id, item]));
+export const HANGAR_ITEMS = Object.fromEntries(
+  [...HANGAR.major, ...HANGAR.refits, ...HANGAR.secondaries].map((item) => [item.id, item]),
+);
 
 function emptyProfile() {
-  return { gold: 0, best: 0, unlocks: {}, ranks: {}, weapon: 'blaster' };
+  return { gold: 0, best: 0, unlocks: {}, ranks: {}, weapon: 'blaster', secondary: null };
 }
 
 const isCount = (value) => Number.isFinite(value) && value >= 0;
@@ -21,6 +25,7 @@ export function loadProfile() {
       if (isPlainObject(saved.unlocks)) profile.unlocks = saved.unlocks;
       if (isPlainObject(saved.ranks)) profile.ranks = saved.ranks;
       if (WEAPONS[saved.weapon]) profile.weapon = saved.weapon;
+      if (SECONDARIES[saved.secondary]) profile.secondary = saved.secondary;
     } else {
       const legacyBest = parseInt(window.localStorage.getItem(LEGACY_HIGH_SCORE_KEY), 10);
       if (isCount(legacyBest)) profile.best = legacyBest;
@@ -29,6 +34,9 @@ export function loadProfile() {
     // Unreadable storage: play with a fresh profile.
   }
   if (!isWeaponUnlocked(profile, profile.weapon)) profile.weapon = 'blaster';
+  if (!profile.secondary || secondaryRank(profile, profile.secondary) === 0) {
+    profile.secondary = unlockedSecondaries(profile)[0] ?? null;
+  }
   return profile;
 }
 
@@ -58,6 +66,14 @@ export function unlockedWeapons(profile) {
   return WEAPON_ORDER.filter((id) => isWeaponUnlocked(profile, id));
 }
 
+export function secondaryRank(profile, secondaryId) {
+  return rankOf(profile, `secondary_${secondaryId}`);
+}
+
+export function unlockedSecondaries(profile) {
+  return SECONDARY_ORDER.filter((id) => secondaryRank(profile, id) > 0);
+}
+
 // Returns null once the item is owned or fully ranked.
 export function nextCost(profile, item) {
   if (item.costs) {
@@ -74,6 +90,7 @@ export function purchase(profile, item) {
   if (item.costs) profile.ranks[item.id] = rankOf(profile, item.id) + 1;
   else profile.unlocks[item.id] = true;
   if (item.weapon) profile.weapon = item.weapon;
+  if (item.secondary) profile.secondary = item.secondary;
   saveProfile(profile);
   return true;
 }
@@ -92,6 +109,8 @@ export function runModifiers(profile) {
   const bonus = (id) => rankOf(profile, id) * HANGAR_ITEMS[id].perRank;
   return {
     weapon: profile.weapon,
+    secondary: profile.secondary,
+    secondaryRank: profile.secondary ? secondaryRank(profile, profile.secondary) : 0,
     abilitySlots: isOwned(profile, 'secondSlot') ? 2 : 1,
     startBarrier: isOwned(profile, 'startBarrier'),
     moveSpeedMul: 1 + bonus('thrusters'),

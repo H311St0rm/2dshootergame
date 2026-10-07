@@ -94,6 +94,19 @@ export default class Sfx {
     this.tone(990, null, 0.12, 'square', 0.12, 0.07);
   }
 
+  droneShot() {
+    this.tone(1800, 900, 0.06, 'square', 0.06);
+  }
+
+  teslaArc() {
+    this.noise(0.12, 0.18, 6000);
+    this.tone(90, 60, 0.1, 'sawtooth', 0.08);
+  }
+
+  deflect() {
+    this.tone(400, 1200, 0.12, 'triangle', 0.18);
+  }
+
   denied() {
     this.tone(160, 120, 0.18, 'square', 0.15);
   }
