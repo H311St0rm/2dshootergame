@@ -453,7 +453,7 @@ All four weapons read the same level table (§8b) and reshape it, so upgrades, t
 | Blaster (free) | The level's fan (§8b) | Level damage | Level interval | 4×10 sprite, 5×10 hitbox, 480 px/s |
 | Lance | Same count as the level, as parallel straight-up lanes 7px apart. Each beam pierces one enemy (damages up to two different enemies, never the same one twice) and always stops at the Sentinel. | Level damage | Level interval | 2×16 sprite, 3×16 hitbox, 640 px/s |
 | Scatter | `2 × levelCount + 1` pellets spread evenly across ±(20° + 3° × levelCount), each with ±3° random jitter | `max(1, round(levelDamage × 0.6))` | Level interval × 1.4 | 4×4 sprite, 5×5 hitbox, 520 px/s, vanishes after 320px (fading over the last 30%) |
-| Seeker | `ceil(levelCount / 2)` missiles, launched across ±25° (straight up when only one) | Level damage × 2 | Level interval × 1.5 | 4×8 sprite, 5×8 hitbox, 320 px/s, turns up to 5 rad/s toward the nearest on-screen enemy (the Sentinel during its fight), expires after 3s |
+| Seeker | `ceil(levelCount / 2)` missiles, launched across ±25° (straight up when only one) | Level damage × 2, then cut for each missile beyond the first, compounding: −20%, −15%, −10%, −5%, then no further cut (×1, ×0.8, ×0.68, ×0.612, ×0.5814 for 1–5+ missiles) | Level interval × 1.5 | 4×8 sprite, 5×8 hitbox, 320 px/s, turns up to 3 rad/s toward the nearest on-screen enemy (the Sentinel during its fight), expires after 3s |
 
 ### Choosing a weapon
 

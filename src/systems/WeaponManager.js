@@ -51,9 +51,12 @@ const SHAPERS = {
   }),
   seeker: (w, s) => {
     const n = Math.ceil(s.angles.length / 2);
+    const damageFactor = w.extraMissileDamageCuts
+      .slice(0, n - 1)
+      .reduce((factor, cut) => factor * (1 - cut), 1);
     return {
       interval: s.interval * w.intervalScale,
-      damage: s.damage * w.damageScale,
+      damage: s.damage * w.damageScale * damageFactor,
       shots: fan(n, n > 1 ? w.launchSpreadDeg : 0),
     };
   },

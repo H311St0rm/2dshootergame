@@ -66,8 +66,11 @@ export const WEAPONS = {
   },
   seeker: {
     id: 'seeker', name: 'SEEKER', texture: 'bullet_seeker', hitbox: { width: 5, height: 8 }, speed: 320,
-    turnRate: 5, lifetime: 3, launchSpreadDeg: 25, damageScale: 2, intervalScale: 1.5,
-    blurb: 'Slow homing missiles that hit twice as hard. Fewer shots, almost no misses.',
+    turnRate: 3, lifetime: 3, launchSpreadDeg: 25, damageScale: 2, intervalScale: 1.5,
+    // Each missile added to a volley cuts every missile's damage by these steps, compounding;
+    // past the last step, more missiles cost nothing.
+    extraMissileDamageCuts: [0.2, 0.15, 0.1, 0.05],
+    blurb: 'Slow homing missiles that hit twice as hard. Each extra missile per volley hits a little softer.',
   },
 };
 
