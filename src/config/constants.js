@@ -49,20 +49,34 @@ export const PLAYER_BULLET = {
 // deliberately ~25% wider than each projectile sprite, rounded up.
 export const WEAPON_ORDER = ['blaster', 'lance', 'scatter', 'seeker'];
 
+// Each weapon's `ultimate` (§19) is a 10,000-gold Hangar purchase once the weapon is owned;
+// its fields switch on the matching projectile behavior in PlayerBullet.
 export const WEAPONS = {
   blaster: {
     id: 'blaster', name: 'BLASTER', texture: 'player_bullet', hitbox: { width: 5, height: 10 }, speed: 480,
     blurb: 'A balanced fan of shots that widens as you level up.',
+    ultimate: {
+      name: 'RICOCHET', cost: 10000, bounces: 1,
+      blurb: 'Shots bounce once off the left and right edges of the screen.',
+    },
   },
   lance: {
     id: 'lance', name: 'LANCE', texture: 'bullet_lance', hitbox: { width: 3, height: 16 }, speed: 640,
     laneSpacing: 7, pierce: 1,
     blurb: 'Tight parallel beams. Each beam passes through one enemy and hits the next.',
+    ultimate: {
+      name: 'RAILGUN', cost: 10000, pierceAll: true, blastRadius: 26,
+      blurb: 'Beams pierce every enemy, and detonate enemy bullets they touch along with any nearby.',
+    },
   },
   scatter: {
     id: 'scatter', name: 'SCATTER', texture: 'bullet_pellet', hitbox: { width: 5, height: 5 }, speed: 520,
     range: 320, coneBaseDeg: 20, coneDegPerShot: 3, jitterDeg: 3, damageScale: 0.6, intervalScale: 1.4,
     blurb: 'A wide burst of short-range pellets. Brutal up close, useless far away.',
+    ultimate: {
+      name: 'FLAK', cost: 10000, shards: 3, shardSpreadDeg: 20, shardDamageScale: 0.5,
+      blurb: 'Pellets that reach max range burst into 3 shards at half damage.',
+    },
   },
   seeker: {
     id: 'seeker', name: 'SEEKER', texture: 'bullet_seeker', hitbox: { width: 5, height: 8 }, speed: 320,
@@ -71,8 +85,19 @@ export const WEAPONS = {
     // past the last step, more missiles cost nothing.
     extraMissileDamageCuts: [0.2, 0.15, 0.1, 0.05],
     blurb: 'Slow homing missiles that hit twice as hard. Each extra missile per volley hits a little softer.',
+    ultimate: {
+      name: 'SWARM', cost: 10000, retargets: 1,
+      blurb: 'A missile that kills its target hunts down one more, with a fresh 3s of flight.',
+    },
   },
 };
+
+// The 3 shards a Flak pellet bursts into at the end of its range.
+export const FLAK_SHARD = {
+  id: 'shard', texture: 'bullet_shard', hitbox: { width: 3, height: 4 }, speed: 520, range: 120,
+};
+// Flak skips its burst while this many player shots are already live, to keep the frame rate steady.
+export const MAX_SHOTS_FOR_FLAK = 400;
 
 const A1 = [0];
 const A2 = [-8, 8];
@@ -289,9 +314,15 @@ export const HANGAR = {
       id: 'startBarrier', name: 'LAUNCH BARRIER', cost: 5000,
       blurb: 'Every run starts with a barrier that absorbs one hit.',
     },
-    { id: 'weapon_lance', name: 'WEAPON: LANCE', cost: 5000, weapon: 'lance', blurb: WEAPONS.lance.blurb },
-    { id: 'weapon_scatter', name: 'WEAPON: SCATTER', cost: 5000, weapon: 'scatter', blurb: WEAPONS.scatter.blurb },
-    { id: 'weapon_seeker', name: 'WEAPON: SEEKER', cost: 5000, weapon: 'seeker', blurb: WEAPONS.seeker.blurb },
+    ...WEAPON_ORDER.map((id) => ({
+      id: `weapon_${id}`,
+      name: `WEAPON: ${WEAPONS[id].name}`,
+      // The Blaster is free: its row exists only to sell its ultimate.
+      cost: id === 'blaster' ? 0 : 5000,
+      weapon: id,
+      ultimate: WEAPONS[id].ultimate,
+      blurb: WEAPONS[id].blurb,
+    })),
   ],
   refits: [
     {

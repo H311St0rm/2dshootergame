@@ -156,6 +156,12 @@ export const SPRITES = {
     rows: ['.oo.', 'oyyo', 'oyyo', '.oo.'],
   },
 
+  bullet_shard: {
+    scale: 1,
+    palette: { o: 0xff9a3d, y: 0xfff2b0 },
+    rows: ['yy', 'oo', 'oo', 'oo'],
+  },
+
   bullet_seeker: {
     scale: 1,
     palette: { w: 0xffffff, r: 0xff5a5a, o: 0xffb04d, y: 0xffe14d },

@@ -1,6 +1,6 @@
 import {
   PLAYER, PLAYER_BULLET, WEAPONS, DEFLECT_SHOT, DROPS, ABILITIES, ABILITY_KEYS, BOSS, SURVIVAL_GOLD, BARRIER,
-  MAX_LEVEL_PICKUP, EXPLOSION, TIMING, DEPTH, MAX_FRAME_DT,
+  MAX_LEVEL_PICKUP, FLAK_SHARD, MAX_SHOTS_FOR_FLAK, EXPLOSION, TIMING, DEPTH, MAX_FRAME_DT,
 } from '../config/constants.js';
 import Player from '../entities/Player.js';
 import Enemy from '../entities/Enemy.js';
@@ -17,6 +17,9 @@ import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
 import { loadProfile, runModifiers, bankRun } from '../systems/profile.js';
 import Hud from '../ui/Hud.js';
+
+// The 'flash' texture is a 64px circle (BootScene), so scale = radius / 32.
+const FLASH_TEXTURE_RADIUS = 32;
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -45,6 +48,7 @@ export default class GameScene extends Phaser.Scene {
       .setVisible(this.hasBarrier);
 
     this.weapon = new WeaponManager(this.mods.weapon, this.mods.startLevel);
+    this.weaponUltimate = this.mods.weaponUltimate ? WEAPONS[this.mods.weapon].ultimate : null;
     this.abilities = new AbilityManager(this.mods.abilitySlots, this.mods.abilityDurationMul);
     this.difficulty = new DifficultyManager();
     this.difficulty.smoothedWeaponLevel = this.mods.startLevel;
@@ -64,6 +68,11 @@ export default class GameScene extends Phaser.Scene {
     this.enemyFire = (enemy) => this.fireEnemyPattern(enemy);
     this.firePlayer = (volley) => this.firePlayerVolley(volley);
     this.findSeekerTarget = (x, y) => this.nearestTarget(x, y);
+    // Flak bursts are queued while player bullets tick, then spawned once the loop is done.
+    this.flakQueue = [];
+    this.queueFlakBurst = (pellet) => {
+      this.flakQueue.push({ x: pellet.x, y: pellet.y, heading: pellet.heading, damage: pellet.damage });
+    };
 
     this.keys = this.input.keyboard.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D');
     this.input.keyboard.addCapture('SPACE');
@@ -97,6 +106,14 @@ export default class GameScene extends Phaser.Scene {
     physics.add.overlap(this.player, this.pickups, (a, b) => this.onPickup(other(a, b, this.player)));
     physics.add.overlap(boss, this.playerBullets, (a, b) => this.onBulletHitBoss(other(a, b, boss)));
     physics.add.overlap(this.player, boss, () => this.onPlayerTouchBoss());
+    if (this.weaponUltimate?.blastRadius) {
+      physics.add.overlap(
+        this.playerBullets,
+        this.enemyBullets,
+        (a, b) => this.detonateEnemyBullet(a instanceof EnemyBullet ? a : b),
+        (a, b) => (a instanceof PlayerBullet ? a : b).blastRadius > 0,
+      );
+    }
   }
 
   update(time, delta) {
@@ -123,8 +140,9 @@ export default class GameScene extends Phaser.Scene {
       if (bullet.active) bullet.tick(slow * this.secondary.bulletSpeedFactorAt(bullet.x, bullet.y));
     }
     for (const bullet of this.playerBullets.getChildren()) {
-      if (bullet.active) bullet.tick(dt, this.findSeekerTarget);
+      if (bullet.active) bullet.tick(dt, this.findSeekerTarget, this.queueFlakBurst);
     }
+    this.burstFlak();
     for (const pickup of this.pickups.getChildren()) {
       if (pickup.active) pickup.tick(dt);
     }
@@ -169,7 +187,7 @@ export default class GameScene extends Phaser.Scene {
       min: this.weapon.min,
       max: this.weapon.max,
       atMax: this.weapon.isAtMax,
-      weaponName: WEAPONS[this.weapon.weaponId].name,
+      weaponName: `${WEAPONS[this.weapon.weaponId].name}${this.weaponUltimate ? ' ULT' : ''}`,
       gold: Math.floor(this.gold),
       best: this.profile.best,
       elapsed: this.difficulty.elapsed,
@@ -225,9 +243,26 @@ export default class GameScene extends Phaser.Scene {
     for (const shot of volley.shots) {
       const x = this.player.x + shot.offsetX;
       const jitter = weapon.jitterDeg ? Phaser.Math.FloatBetween(-weapon.jitterDeg, weapon.jitterDeg) : 0;
-      this.playerBullets.get(x, y).fire(x, y, shot.angle + jitter, volley.damage, weapon);
+      this.playerBullets.get(x, y).fire(x, y, shot.angle + jitter, volley.damage, weapon, this.weaponUltimate);
     }
     this.sfx.shoot();
+  }
+
+  // Flak (§19): each pellet that flew its full range splits into shards fanned around its heading.
+  // Shards never burst again, and bursts are skipped while the screen is already full of shots.
+  burstFlak() {
+    if (this.flakQueue.length === 0) return;
+    const { shards, shardSpreadDeg, shardDamageScale } = this.weaponUltimate;
+    for (const pellet of this.flakQueue) {
+      if (this.playerBullets.countActive(true) + shards > MAX_SHOTS_FOR_FLAK) break;
+      const heading = Phaser.Math.RadToDeg(pellet.heading);
+      for (let i = 0; i < shards; i++) {
+        const angle = heading - shardSpreadDeg + (2 * shardSpreadDeg * i) / (shards - 1);
+        this.playerBullets.get(pellet.x, pellet.y)
+          .fire(pellet.x, pellet.y, angle, pellet.damage * shardDamageScale, FLAK_SHARD);
+      }
+    }
+    this.flakQueue.length = 0;
   }
 
   fireEnemyPattern(enemy) {
@@ -265,15 +300,32 @@ export default class GameScene extends Phaser.Scene {
   // --- Collisions ---------------------------------------------------------
 
   onBulletHitEnemy(bullet, enemy) {
-    if (!bullet.active || !enemy.active) return;
-    if (!bullet.registerHit(enemy.uid)) return;
-    this.damageEnemy(enemy, bullet.damage, 'bullet');
+    if (!bullet.active || !enemy.active || !bullet.canHit(enemy.uid)) return;
+    const killed = this.damageEnemy(enemy, bullet.damage, 'bullet');
+    bullet.consumeHit(enemy.uid, killed);
+  }
+
+  // Railgun (§19): a beam that touches an enemy bullet detonates it, taking every enemy
+  // bullet within the blast radius with it. The beam flies on, and blasts don't chain.
+  detonateEnemyBullet(bullet) {
+    if (!bullet.active) return;
+    const { x, y } = bullet;
+    const radius = this.weaponUltimate.blastRadius;
+    for (const other of this.enemyBullets.getChildren()) {
+      if (other.active && (other.x - x) ** 2 + (other.y - y) ** 2 <= radius ** 2) other.disableBody(true, true);
+    }
+    this.explode(x, y, 0x7ff0ff, 6);
+    this.flash(x, y, 0x7ff0ff, radius / FLASH_TEXTURE_RADIUS, 200);
+    this.sfx.railBlast();
   }
 
   // --- Hooks for secondary weapons (§20) -----------------------------------
 
+  // Returns whether the hit killed the enemy.
   damageEnemy(enemy, amount, cause) {
-    if (enemy.damage(amount)) this.killEnemy(enemy, cause);
+    const killed = enemy.damage(amount);
+    if (killed) this.killEnemy(enemy, cause);
+    return killed;
   }
 
   destroyEnemyBullet(bullet) {

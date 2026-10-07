@@ -79,23 +79,33 @@ export function unlockedSecondaries(profile) {
   return SECONDARY_ORDER.filter((id) => secondaryRank(profile, id) > 0);
 }
 
-export function hasUltimate(profile, secondaryId) {
-  return isOwned(profile, `ultimate_${secondaryId}`);
+// Weapon and secondary ids never collide, so both share the `ultimate_<id>` unlock keys.
+export function hasUltimate(profile, weaponOrSecondaryId) {
+  return isOwned(profile, `ultimate_${weaponOrSecondaryId}`);
 }
 
-// True when the item's next purchase is its secondary ultimate (only offered at max rank).
+// Weapon rows count the free Blaster as owned.
+export function itemOwned(profile, item) {
+  return item.weapon ? isWeaponUnlocked(profile, item.weapon) : isOwned(profile, item.id);
+}
+
+// True when the item's next purchase is its ultimate: offered once a weapon is owned,
+// or once a secondary reaches max rank.
 export function nextIsUltimate(profile, item) {
-  return Boolean(item.ultimate) && rankOf(profile, item.id) === item.costs.length && !hasUltimate(profile, item.secondary);
+  if (!item.ultimate) return false;
+  const ready = item.costs ? rankOf(profile, item.id) === item.costs.length : itemOwned(profile, item);
+  return ready && !hasUltimate(profile, item.secondary || item.weapon);
 }
 
-// Returns null once the item is owned or fully ranked (and, for secondaries, its ultimate bought).
+// Returns null once the item is owned or fully ranked, and its ultimate (if any) bought.
 export function nextCost(profile, item) {
   if (item.costs) {
     const rank = rankOf(profile, item.id);
     if (rank < item.costs.length) return item.costs[rank];
-    return nextIsUltimate(profile, item) ? item.ultimate.cost : null;
+  } else if (!itemOwned(profile, item)) {
+    return item.cost;
   }
-  return isOwned(profile, item.id) ? null : item.cost;
+  return nextIsUltimate(profile, item) ? item.ultimate.cost : null;
 }
 
 export function purchase(profile, item) {
@@ -103,7 +113,7 @@ export function purchase(profile, item) {
   if (cost === null || profile.gold < cost) return false;
   const ultimate = nextIsUltimate(profile, item);
   profile.gold -= cost;
-  if (ultimate) profile.unlocks[`ultimate_${item.secondary}`] = true;
+  if (ultimate) profile.unlocks[`ultimate_${item.secondary || item.weapon}`] = true;
   else if (item.costs) profile.ranks[item.id] = rankOf(profile, item.id) + 1;
   else profile.unlocks[item.id] = true;
   if (item.weapon) profile.weapon = item.weapon;
@@ -126,6 +136,7 @@ export function runModifiers(profile) {
   const bonus = (id) => rankOf(profile, id) * HANGAR_ITEMS[id].perRank;
   return {
     weapon: profile.weapon,
+    weaponUltimate: hasUltimate(profile, profile.weapon),
     secondary: profile.secondary,
     secondaryRank: profile.secondary ? secondaryRank(profile, profile.secondary) : 0,
     secondaryUltimate: profile.secondary ? hasUltimate(profile, profile.secondary) : false,

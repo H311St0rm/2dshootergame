@@ -2,7 +2,7 @@ import { GAME_WIDTH, HANGAR } from '../config/constants.js';
 import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
 import { describeSecondary } from '../systems/SecondaryManager.js';
-import { loadProfile, purchase, nextCost, rankOf, isOwned, hasUltimate, nextIsUltimate } from '../systems/profile.js';
+import { loadProfile, purchase, nextCost, rankOf, itemOwned, hasUltimate, nextIsUltimate } from '../systems/profile.js';
 import { textStyle, formatGold } from '../ui/Hud.js';
 
 const CX = GAME_WIDTH / 2;
@@ -69,9 +69,9 @@ export default class HangarScene extends Phaser.Scene {
     this.blurb = this.add
       .text(CX, footerTop + 12, '', { ...textStyle(12, '#c9d3e0'), align: 'center', wordWrap: { width: 430 } })
       .setOrigin(0.5, 0);
-    this.message = this.add.text(CX, footerTop + 94, '', textStyle(13)).setOrigin(0.5);
-    this.buyButton = this.button(CX - 90, footerTop + 126, 'ENTER  BUY', '#4dff88', () => this.buy());
-    this.button(CX + 90, footerTop + 126, 'ESC  BACK', '#ffd700', () => this.back());
+    this.message = this.add.text(CX, footerTop + 102, '', textStyle(13)).setOrigin(0.5);
+    this.buyButton = this.button(CX - 90, footerTop + 132, 'ENTER  BUY', '#4dff88', () => this.buy());
+    this.button(CX + 90, footerTop + 132, 'ESC  BACK', '#ffd700', () => this.back());
 
     const keyboard = this.input.keyboard;
     const onKey = (handler) => (event) => {
@@ -163,7 +163,8 @@ export default class HangarScene extends Phaser.Scene {
       } else {
         row.status.setText(formatGold(cost)).setColor(gold >= cost ? COLORS.affordable : COLORS.tooExpensive);
       }
-      row.name.setColor(!item.costs && isOwned(this.profile, item.id) ? '#7fa9b5' : '#ffffff');
+      // Dimmed once a buy-once row has nothing left to sell (weapon rows stay lit until their ultimate is bought).
+      row.name.setColor(!item.costs && cost === null ? '#7fa9b5' : '#ffffff');
       if (item.costs) this.drawPips(row.y, rankOf(this.profile, item.id), item.costs.length);
       if (item.ultimate) this.drawUltimateMark(row.y, item);
     }
@@ -181,6 +182,7 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   describe(item) {
+    if (item.weapon) return this.describeWeapon(item);
     if (!item.costs) return item.blurb;
     const rank = rankOf(this.profile, item.id);
     const max = item.costs.length;
@@ -195,12 +197,19 @@ export default class HangarScene extends Phaser.Scene {
     return `MAX RANK: ${describeSecondary(id, rank, owned)}\n${heading}: ${item.ultimate.name}\n${item.ultimate.blurb}`;
   }
 
-  // A diamond after the rank pips: outlined until the ultimate is bought, then filled.
+  describeWeapon(item) {
+    const { name, blurb } = item.ultimate;
+    if (!itemOwned(this.profile, item)) return `${item.blurb}\nOWN IT TO UNLOCK ITS ULTIMATE: ${name}\n${blurb}`;
+    const heading = hasUltimate(this.profile, item.weapon) ? 'ULTIMATE OWNED' : 'ULTIMATE AVAILABLE';
+    return `${item.blurb}\n${heading}: ${name}\n${blurb}`;
+  }
+
+  // A diamond in the column after the rank pips: outlined until the ultimate is bought, then filled.
   drawUltimateMark(y, item) {
     const g = this.pips;
     const x = PIP.rightEdge + 10;
     const r = 5;
-    const owned = hasUltimate(this.profile, item.secondary);
+    const owned = hasUltimate(this.profile, item.secondary || item.weapon);
     const available = nextIsUltimate(this.profile, item);
     const diamond = (radius) => [
       { x, y: y - radius },

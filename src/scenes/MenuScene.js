@@ -150,8 +150,11 @@ export default class MenuScene extends Phaser.Scene {
     }
 
     const weapon = WEAPONS[this.profile.weapon];
-    this.rowUi.primary.name.setText(weapon.name);
-    this.rowUi.primary.detail.setText(weapon.blurb);
+    const weaponUltimate = hasUltimate(this.profile, this.profile.weapon);
+    this.rowUi.primary.name.setText(weaponUltimate ? `${weapon.name}  ULT` : weapon.name);
+    this.rowUi.primary.detail.setText(
+      weaponUltimate ? `${weapon.ultimate.name}: ${weapon.ultimate.blurb}` : weapon.blurb,
+    );
     this.drawPrimaryPreview(this.profile.weapon);
     this.drawDots();
 

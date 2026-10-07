@@ -263,7 +263,7 @@ Required generated textures:
 - Player ship (24×24)
 - Enemy types A–D (16×16 / 18×18 / 18×18 / 28×28)
 - The Sentinel boss (64×64, see §7b)
-- Player projectiles: Blaster bullet (4×10), Lance beam (2×16), Scatter pellet (4×4), Seeker missile (4×8)
+- Player projectiles: Blaster bullet (4×10), Lance beam (2×16), Scatter pellet (4×4), Flak shard (2×4, §19), Seeker missile (4×8)
 - Enemy bullet (6×6)
 - Launch Barrier ring (34×34, thin gold double circle)
 - Escort drone (10×10, cyan) and the deflected-bullet dot (6×6, the enemy bullet shape in mint green). Tesla arcs and the Repulsor Field circle are drawn live with vector graphics.
@@ -303,7 +303,8 @@ Two independent difficulty systems, driven by two different things: how long you
 
 | Collision | Result |
 |---|---|
-| Player bullet ↔ Enemy | Enemy HP − (the volley's damage per shot, §8b/§19); bullet destroyed, unless it is a Lance beam with pierce left (§19). If enemy HP ≤ 0: explode, award gold, roll pickup drop chance (§8b). |
+| Player bullet ↔ Enemy | Enemy HP − (the volley's damage per shot, §8b/§19); bullet destroyed, unless it is a Lance beam with pierce left or a Swarm missile retargeting after a kill (§19). If enemy HP ≤ 0: explode, award gold, roll pickup drop chance (§8b). |
+| Railgun beam ↔ Enemy bullet | Only with the Lance's Railgun ultimate (§19): the bullet detonates, destroying itself and every enemy bullet within 26px; the beam flies on. Without it, player shots and enemy bullets ignore each other. |
 | Player ↔ Enemy body ("ramming") | Player takes a hit per the weapon-level rule in §8b (subject to i-frames); enemy is also destroyed and explodes, but awards **no gold** and **no pickup drop** (shooting enemies down is the intended, rewarded playstyle; ramming is a fallback that costs the player). |
 | Player ↔ Enemy bullet | Player takes a hit per the weapon-level rule in §8b (subject to i-frames); bullet destroyed. |
 | Player ↔ Ability pickup | Collected into the ability slots per §8's fill/replace rule; pickup removed; small collect flash. |
@@ -315,7 +316,7 @@ All bullets/enemies/pickups are destroyed and removed once they fully exit the s
 
 ## 12. HUD
 
-- **Top-left:** Weapon Level meter — a bar filled to `(weaponLevel - weaponLevelMin) / (weaponLevelMax - weaponLevelMin)`, labeled with the exact numeric level (e.g. "LVL 8"). Empty means the next hit is lethal. Using a fraction rather than fixed pips means it reads correctly even after the range widens via a prestige (§7b). This single meter replaces a traditional health bar; see §8b. The equipped weapon's name sits under the meter, and under that, once the player is at max level (or has progress), "SHRUG" with 5 small pips for the shrug meter (§8b) — the label turns gold while a shrug is held.
+- **Top-left:** Weapon Level meter — a bar filled to `(weaponLevel - weaponLevelMin) / (weaponLevelMax - weaponLevelMin)`, labeled with the exact numeric level (e.g. "LVL 8"). Empty means the next hit is lethal. Using a fraction rather than fixed pips means it reads correctly even after the range widens via a prestige (§7b). This single meter replaces a traditional health bar; see §8b. The equipped weapon's name sits under the meter ("LANCE ULT" when its ultimate is owned, §19), and under that, once the player is at max level (or has progress), "SHRUG" with 5 small pips for the shrug meter (§8b) — the label turns gold while a shrug is held.
 - **Top-right:** Live gold ("GOLD 1,234"), with "BEST RUN N" directly beneath it.
 - **Bottom-center:** One ability slot box, or two side by side with the Second Ability Slot (§19). Empty slots are greyed outlines. Slot 1 shows its icon brightly with its name to the left and a pulsing "[SPACE]" hint to the right; slot 2's icon is dimmed as the queued one.
 - **Bottom-right (only with a secondary equipped):** the secondary's name over an 84px charge bar that fills during its cooldown and turns bright when it's ready (§20).
@@ -390,6 +391,7 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] The Launch Barrier absorbs exactly the first unblocked hit of a run without costing levels or breaking the streak.
 - [ ] Each secondary sells in 6 ranks at its listed escalating prices, buying a rank equips it, and Up/Down + Left/Right on the start screen choose among unlocked secondaries.
 - [ ] Escort Drone shoots down the bullet nearest the ship within 260px on its cooldown (5s → 1s over 5 ranks).
+- [ ] Each weapon's 10,000-gold ultimate is offered once the weapon is owned (at once for the Blaster) and works as described: Ricochet (one bounce off a side edge, never the top), Railgun (pierces every enemy; detonates touched enemy bullets plus any within 26px, no chaining), Flak (3 half-damage shards at ±20° when a pellet reaches max range), Swarm (one retarget after a kill, with a fresh 3s lifetime).
 - [ ] Each secondary's 10,000-gold ultimate is only offered at max rank and works as described: Twin Drones (second staggered drone), Chain Lightning (+20px range, every arc jumps once within 80px), Stasis Field (bullets inside the field at 25% speed).
 - [ ] A weapon-upgrade pickup at max level pays +100 gold and fills the shrug meter; every 5th grants a one-hit shrug (gold ring), at most one held at a time.
 - [ ] Tesla Coil arcs into the nearest enemies, Sentinel and bullets within range, capped per rank, on its cooldown (2s/60px → 0.5s/130px).
@@ -409,14 +411,15 @@ Runs feed a persistent bank of gold (§13), which buys permanent upgrades betwee
 
 ### The Hangar
 
-Opened with H from the start screen or the Game Over screen. Up/Down or W/S select a row, Enter or Space buys, Esc/H/Backspace return to the start screen; rows and buttons are also clickable. Each row shows its next price (gold when affordable, grey when not), OWNED, or MAX, and refits show filled/empty rank pips. Trying to buy something unaffordable shows the shortfall ("NEED 1,234 MORE GOLD"); trying to buy something owned or maxed says so. A purchase saves immediately and applies from the next run.
+Opened with H from the start screen or the Game Over screen. Up/Down or W/S select a row, Enter or Space buys, Esc/H/Backspace return to the start screen; rows and buttons are also clickable. Each row shows its next price (gold when affordable, grey when not), OWNED, MAX, or ULTIMATE, and refits show filled/empty rank pips. Trying to buy something unaffordable shows the shortfall ("NEED 1,234 MORE GOLD"); trying to buy something owned or maxed says so. A purchase saves immediately and applies from the next run.
 
-**Major upgrades** — bought once, 5,000 gold each:
+**Major upgrades** — bought once, 5,000 gold each. Weapon rows then sell that weapon's 10,000-gold ultimate (Weapon ultimates, below):
 
 | Upgrade | Effect |
 |---|---|
 | Second Ability Slot | Hold two abilities; SPACE fires them in pickup order (rules below). |
 | Launch Barrier | Every run starts with a barrier that absorbs one hit (rules below). |
+| Weapon: Blaster | Free and always owned; the row exists to sell the Blaster's ultimate. |
 | Weapon: Lance | Unlocks the Lance and equips it. |
 | Weapon: Scatter | Unlocks the Scatter and equips it. |
 | Weapon: Seeker | Unlocks the Seeker and equips it. |
@@ -431,7 +434,7 @@ Opened with H from the start screen or the Game Over screen. Up/Down or W/S sele
 | Prospector | +5% gold from every source | 5 | 400 / 800 / 1,200 / 1,600 / 2,000 |
 | Head Start | Start each run one weapon level higher (smoothed enemy count starts there too) | 3 | 800 / 1,600 / 3,200 |
 
-Buying every major upgrade and refit rank costs 49,100 gold (25,000 for the majors, 24,100 for the refits). The Hangar's third section sells the secondary weapons (§20), which add 113,500 more for every rank and ultimate of all three.
+Buying every major upgrade and refit rank costs 49,100 gold (25,000 for the majors, 24,100 for the refits), and the four weapon ultimates add 40,000. The Hangar's third section sells the secondary weapons (§20), which add 113,500 more for every rank and ultimate of all three.
 
 ### Second Ability Slot
 
@@ -454,6 +457,17 @@ All four weapons read the same level table (§8b) and reshape it, so upgrades, t
 | Lance | Same count as the level, as parallel straight-up lanes 7px apart. Each beam pierces one enemy (damages up to two different enemies, never the same one twice) and always stops at the Sentinel. | Level damage | Level interval | 2×16 sprite, 3×16 hitbox, 640 px/s |
 | Scatter | `2 × levelCount + 1` pellets spread evenly across ±(20° + 3° × levelCount), each with ±3° random jitter | `max(1, round(levelDamage × 0.6))` | Level interval × 1.4 | 4×4 sprite, 5×5 hitbox, 520 px/s, vanishes after 320px (fading over the last 30%) |
 | Seeker | `ceil(levelCount / 2)` missiles, launched across ±25° (straight up when only one) | Level damage × 2, then cut for each missile beyond the first, compounding: −20%, −15%, −10%, −5%, then no further cut (×1, ×0.8, ×0.68, ×0.612, ×0.5814 for 1–5+ missiles) | Level interval × 1.5 | 4×8 sprite, 5×8 hitbox, 320 px/s, turns up to 3 rad/s toward the nearest on-screen enemy (the Sentinel during its fight), expires after 3s |
+
+### Weapon ultimates
+
+Each weapon has one ultimate, sold for **10,000 gold** in its Hangar weapon row once the weapon is owned (straight away for the free Blaster). The row reads "ULT 10,000" in magenta and shows the same ultimate diamond as the secondaries (§20); buying it equips the weapon. The row's description names the ultimate and its effect, including for a weapon not yet owned ("OWN IT TO UNLOCK ITS ULTIMATE: …"). An owned ultimate is always on whenever its weapon is equipped: the start screen shows "LANCE  ULT" with the ultimate's description, and the HUD label reads "LANCE ULT".
+
+| Weapon | Ultimate | Effect |
+|---|---|---|
+| Blaster | Ricochet | Each shot bounces once off the left or right screen edge, mirroring its angle. Never off the top; a shot that already bounced leaves through the far edge. |
+| Lance | Railgun | Beams pierce every enemy, at full damage (they still stop at the Sentinel). A beam that touches an enemy bullet detonates it: that bullet and every enemy bullet within 26px are destroyed, with a small cyan flash. The beam flies on, and detonations don't chain (bullets caught in a blast don't set off blasts of their own). |
+| Scatter | Flak | A pellet that flies its full 320px bursts into 3 shards at −20°, 0° and +20° around its heading, each dealing half the pellet's damage. Shards: 2×4 sprite, 3×4 hitbox, 520 px/s, 120px range, and they never burst again. A pellet that hits an enemy doesn't burst. Bursts are skipped while 400 player shots are already live, to protect the frame rate. |
+| Seeker | Swarm | A missile that kills its target flies on with a fresh 3s lifetime and homes onto the next target. It retargets once: its next hit spends it, kill or not. |
 
 ### Choosing a weapon
 

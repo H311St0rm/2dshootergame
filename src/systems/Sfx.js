@@ -4,12 +4,14 @@
 const MASTER_VOLUME = 0.25;
 const SHOT_MIN_GAP = 0.09;
 const EXPLODE_MIN_GAP = 0.04;
+const BLAST_MIN_GAP = 0.06;
 
 export default class Sfx {
   constructor(scene) {
     this.ctx = scene.sound && scene.sound.context ? scene.sound.context : null;
     this.lastShotAt = 0;
     this.lastExplodeAt = 0;
+    this.lastBlastAt = 0;
     this.master = null;
     this.noiseBuffer = null;
   }
@@ -101,6 +103,15 @@ export default class Sfx {
   teslaArc() {
     this.noise(0.12, 0.18, 6000);
     this.tone(90, 60, 0.1, 'sawtooth', 0.08);
+  }
+
+  // Railgun detonations can come several per frame against a dense pattern, so they're throttled.
+  railBlast() {
+    if (!this.ready()) return;
+    if (this.ctx.currentTime - this.lastBlastAt < BLAST_MIN_GAP) return;
+    this.lastBlastAt = this.ctx.currentTime;
+    this.noise(0.1, 0.2, 5000);
+    this.tone(1400, 500, 0.08, 'square', 0.05);
   }
 
   deflect() {
