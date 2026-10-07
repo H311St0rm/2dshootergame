@@ -36,7 +36,7 @@ fight alongside the ship automatically (§20).
 ## 3. Tech stack & project structure
 
 - **Engine:** Phaser 3 (latest 3.7x line), loaded via CDN `<script>` tag in `index.html`.
-- **No build step.** Plain JS files loaded as ES6 modules (`<script type="module">`). No npm install, no bundler, no TypeScript compile step required to run the game. Serving the folder with any static file server (e.g. `python3 -m http.server`) must be enough to play — browsers refuse to load ES modules from `file://`, so double-clicking `index.html` is not supported.
+- **No build step.** Plain JS files loaded as ES6 modules (`<script type="module">`). No npm install, no bundler, no TypeScript compile step required to run the game. Serving the folder with any static file server (e.g. `python3 -m http.server`) must be enough to play — browsers refuse to load ES modules from `file://`, so double-clicking `index.html` is not supported. For sharing, `node tools/build-standalone.mjs` (Node 18+, internet once to fetch the pinned Phaser) writes `StellarDodge.html`: the whole game, Phaser included, in one file that does run when double-clicked, offline. Rebuild it after changing the game.
 - **No external image/audio asset files.** All sprites are generated procedurally at runtime (see §9). This keeps the build 100% self-contained.
 - **Physics:** Phaser Arcade Physics.
 
@@ -44,6 +44,9 @@ fight alongside the ship automatically (§20).
 
 ```
 index.html
+StellarDodge.html          # Generated single-file build for sharing (tools/build-standalone.mjs)
+tools/
+  build-standalone.mjs     # Bundles index.html + src/ + Phaser into StellarDodge.html
 src/
   main.js                 # Phaser game config, boots the scene list
   config/
