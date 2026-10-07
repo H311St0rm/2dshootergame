@@ -107,7 +107,7 @@ Movement is free 2D, not lane-based. Diagonal movement must be normalized so dia
 
 - Fires automatically, no input needed, from the moment gameplay starts.
 - Fire interval, damage-per-bullet, and bullet spread are all driven by the player's current **weapon level** (0–10 to start, wider after a prestige — §7b) — see the table in §8b. At level 0 this is 1 bullet straight up every 0.35s, damage 1 per bullet.
-- Bullet: 4×10 px yellow (`#ffe14d`) pixel sprite, speed 480 px/s upward, destroyed off-screen or on enemy hit.
+- Bullet: 4×10 px yellow (`#ffe14d`) pixel sprite with a 5×10 hitbox (25% wider than it looks, so shots connect a little more easily), speed 480 px/s upward, destroyed off-screen or on enemy hit.
 - Temporary abilities (Rapid Fire, Spread Shot in §8) can further modify interval/spread on top of the current weapon level — §8b defines exactly how they combine.
 
 ## 7. Enemies
@@ -115,6 +115,8 @@ Movement is free 2D, not lane-based. Diagonal movement must be normalized so dia
 Four enemy types, unlocked progressively by elapsed survival time (unlock times are fixed regardless of difficulty level — see §10). All enemies spawn at y = -20 (just above the visible screen) at a random valid x within [24, 456], move downward, and are destroyed/removed once fully off-screen at the bottom (no score for enemies that escape off-screen).
 
 All Speed, Bullet speed, and Fire interval values below are **base** values — §10 scales all three up over time and with each boss defeated.
+
+Hitboxes are square and centered on the sprite: Drone 16 px, Gunner 17 px, Weaver 17 px, Bulwark 27 px. The same box is used both for player bullets hitting the enemy and for the enemy ramming the player.
 
 | Type | Name | HP | Sprite | Move pattern | Base speed (down) | Fires? | Fire pattern (base interval, base bullet speed) | Score | Unlocks at |
 |---|---|---|---|---|---|---|---|---|---|
@@ -159,7 +161,7 @@ Bosses can recur any number of times in a single run if the player keeps re-qual
 
 ### Sentinel appearance
 
-- 64×64 px procedurally-generated pixel-art sprite (see §9), crimson `#c23b3b` body with darker `#7a1f1f` plating detail.
+- 64×64 px procedurally-generated pixel-art sprite (see §9), crimson `#c23b3b` body with darker `#7a1f1f` plating detail. Hitbox 58×51 px, centered.
 
 ### Flawless prestige reward
 

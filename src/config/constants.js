@@ -42,6 +42,8 @@ export const PLAYER = {
 export const PLAYER_BULLET = {
   speed: 480,
   noseOffsetY: 12,
+  // Deliberately 25% wider than the 4px sprite so shots connect more easily.
+  hitbox: { width: 5, height: 10 },
 };
 
 const A1 = [0];
@@ -110,21 +112,21 @@ export const ABILITIES = {
 
 export const ENEMY_TYPES = {
   drone: {
-    id: 'drone', texture: 'enemy_drone', size: 16, hp: 1, speed: 90, score: 10, unlockAt: 0,
+    id: 'drone', texture: 'enemy_drone', size: 16, hitbox: 16, hp: 1, speed: 90, score: 10, unlockAt: 0,
     color: 0xff4d4d, move: 'straight', fire: null,
   },
   gunner: {
-    id: 'gunner', texture: 'enemy_gunner', size: 18, hp: 2, speed: 70, score: 20, unlockAt: 15,
+    id: 'gunner', texture: 'enemy_gunner', size: 18, hitbox: 17, hp: 2, speed: 70, score: 20, unlockAt: 15,
     color: 0xff9640, move: 'straight',
     fire: { pattern: 'aimed', interval: 1.8, bulletSpeed: 220, bulletTexture: 'ebullet_orange' },
   },
   weaver: {
-    id: 'weaver', texture: 'enemy_weaver', size: 18, hp: 2, speed: 80, score: 25, unlockAt: 35,
+    id: 'weaver', texture: 'enemy_weaver', size: 18, hitbox: 17, hp: 2, speed: 80, score: 25, unlockAt: 35,
     color: 0xb34dff, move: 'sine', sineAmplitude: 60, sinePeriod: 2,
     fire: { pattern: 'down', interval: 2.2, bulletSpeed: 200, bulletTexture: 'ebullet_purple' },
   },
   bulwark: {
-    id: 'bulwark', texture: 'enemy_bulwark', size: 28, hp: 5, speed: 50, score: 50, unlockAt: 60,
+    id: 'bulwark', texture: 'enemy_bulwark', size: 28, hitbox: 27, hp: 5, speed: 50, score: 50, unlockAt: 60,
     color: 0x3dbf5a, move: 'straight',
     fire: { pattern: 'spread', interval: 2.5, bulletSpeed: 200, angles: [-20, 0, 20], bulletTexture: 'ebullet_green' },
   },
@@ -137,7 +139,6 @@ export const ENEMY_SPAWN = {
   minSeparation: 40,
   separationAttempts: 12,
   despawnMargin: 40,
-  hitboxScale: 0.85,
   hitFlashSeconds: 0.06,
 };
 
@@ -168,7 +169,7 @@ export const BOSS = {
   centerX: 240,
   sineAmplitude: 150,
   sinePeriod: 4,
-  hitbox: { width: 52, height: 46 },
+  hitbox: { width: 58, height: 51 },
   muzzleOffsetY: 26,
   baseHp: 3000,
   hpPerIndex: 1500,

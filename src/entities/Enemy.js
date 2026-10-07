@@ -10,8 +10,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.config = config;
     this.setTexture(config.texture);
     this.enableBody(true, x, ENEMY_SPAWN.y, true, true);
-    const hitbox = Math.round(config.size * ENEMY_SPAWN.hitboxScale);
-    this.body.setSize(hitbox, hitbox, true);
+    this.body.setSize(config.hitbox, config.hitbox, true);
     this.setDepth(DEPTH.enemies);
     this.clearTint();
     this.hp = config.hp;

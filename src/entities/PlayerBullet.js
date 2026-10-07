@@ -11,6 +11,7 @@ export default class PlayerBullet extends Phaser.Physics.Arcade.Sprite {
   // Angle is in degrees from straight up; positive leans right.
   fire(x, y, angleDeg, damage) {
     this.enableBody(true, x, y, true, true);
+    this.body.setSize(PLAYER_BULLET.hitbox.width, PLAYER_BULLET.hitbox.height, true);
     this.setDepth(DEPTH.playerBullets);
     const a = Phaser.Math.DegToRad(angleDeg);
     this.setRotation(a);
