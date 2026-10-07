@@ -114,6 +114,10 @@ export default class Sfx {
     this.tone(1400, 500, 0.08, 'square', 0.05);
   }
 
+  tractorLock() {
+    this.tone(320, 640, 0.12, 'sine', 0.08);
+  }
+
   deflect() {
     this.tone(400, 1200, 0.12, 'triangle', 0.18);
   }

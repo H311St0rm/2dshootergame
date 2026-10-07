@@ -147,5 +147,6 @@ export function runModifiers(profile) {
     upgradeDropBonus: bonus('salvage'),
     goldMul: 1 + bonus('prospector'),
     startLevel: bonus('headStart'),
+    tractorRank: rankOf(profile, 'tractor'),
   };
 }

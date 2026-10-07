@@ -13,6 +13,7 @@ import DifficultyManager from '../systems/DifficultyManager.js';
 import SpawnManager from '../systems/SpawnManager.js';
 import BossManager from '../systems/BossManager.js';
 import SecondaryManager from '../systems/SecondaryManager.js';
+import TractorBeam from '../systems/TractorBeam.js';
 import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
 import { loadProfile, runModifiers, bankRun } from '../systems/profile.js';
@@ -57,6 +58,7 @@ export default class GameScene extends Phaser.Scene {
     this.secondary = new SecondaryManager(
       this, this.mods.secondary, this.mods.secondaryRank, this.mods.secondaryUltimate,
     );
+    this.tractor = new TractorBeam(this, this.mods.tractorRank);
     this.hud = new Hud(this, this.abilities.capacity);
     this.emitters = new Map();
 
@@ -146,6 +148,7 @@ export default class GameScene extends Phaser.Scene {
     for (const pickup of this.pickups.getChildren()) {
       if (pickup.active) pickup.tick(dt);
     }
+    this.tractor.update(dt);
 
     const shielded = this.abilities.isActive('shield');
     this.player.tick(dt, shielded);

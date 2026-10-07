@@ -6,13 +6,13 @@ import { loadProfile, purchase, nextCost, rankOf, itemOwned, hasUltimate, nextIs
 import { textStyle, formatGold } from '../ui/Hud.js';
 
 const CX = GAME_WIDTH / 2;
-const ROW = { left: 24, right: GAME_WIDTH - 24, height: 28, step: 32 };
+const ROW = { left: 24, right: GAME_WIDTH - 24, height: 28, step: 30 };
 const GROUPS = [
   { label: 'MAJOR UPGRADES - BUY ONCE', items: HANGAR.major },
   { label: 'REFITS - STACKABLE RANKS', items: HANGAR.refits },
   { label: 'SECONDARY WEAPONS - UPGRADE RANKS', items: HANGAR.secondaries },
 ];
-const FIRST_LABEL_Y = 96;
+const FIRST_LABEL_Y = 92;
 const LABEL_TO_ROW = 22;
 const ROW_TO_LABEL = 30;
 // Pips end left of the widest status text ("ULT 10,000"), leaving room for the ultimate diamond.

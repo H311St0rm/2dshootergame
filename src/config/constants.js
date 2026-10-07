@@ -9,6 +9,7 @@ export const MAX_FRAME_DT = 0.1;
 
 export const DEPTH = {
   stars: 0,
+  tractor: 4,
   pickups: 5,
   enemies: 10,
   playerBullets: 15,
@@ -151,6 +152,18 @@ export const DROPS = {
   fallSpeed: 60,
   doubleDropOffsetX: 9,
   despawnMargin: 20,
+};
+
+// Tractor Beam refit (§19): locks onto the nearest pickup in range and reels it in, one at a time.
+// The pull starts from the pickup's fall speed and accelerates it straight at the ship.
+export const TRACTOR = {
+  range: 220,
+  accelerations: [30, 70, 130, 220, 360], // px/s² by rank, slow to fast
+  maxSpeed: 520,
+  color: 0x9ff6ff,
+  beamWidthAtShip: 4,
+  beamWidthAtTarget: 18,
+  targetRingRadius: 10,
 };
 
 export const ABILITY_KEYS = ['shield', 'nova', 'rapid', 'spread', 'overdrive'];
@@ -344,6 +357,10 @@ export const HANGAR = {
     {
       id: 'headStart', name: 'HEAD START', perRank: 1, costs: [800, 1600, 3200],
       blurb: 'Start each run one weapon level higher per rank.',
+    },
+    {
+      id: 'tractor', name: 'TRACTOR BEAM', costs: [1000, 1000, 1000, 1000, 1000],
+      blurb: `Locks onto the nearest pickup within ${TRACTOR.range}px and reels it in, one at a time, holding on however far you fly. Each rank pulls harder.`,
     },
   ],
   secondaries: SECONDARY_ORDER.map((id) => ({

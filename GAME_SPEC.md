@@ -78,6 +78,7 @@ src/
     WeaponManager.js         # Weapon level, the hit/level-loss/death rule (§8b), and each weapon's volley shape (§19)
     BossManager.js           # Tracks both boss-trigger counters and runs the encounter (§7b)
     SecondaryManager.js      # The equipped defensive secondary: drones, tesla arcs or repulsor field (§20)
+    TractorBeam.js           # The Tractor Beam refit: locks onto a pickup and reels it in (§19)
     Starfield.js             # Parallax scrolling background
     Sfx.js                   # Procedural Web Audio sound effects (§15)
     profile.js               # Saved bank, best run, purchases and chosen weapon; run modifiers (§13, §19)
@@ -405,6 +406,7 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] Left/Right on the start screen cycles only unlocked weapons, and the chosen weapon is the one used in the run.
 - [ ] Lance beams pierce one enemy; Scatter pellets vanish at 320px; Seeker missiles home onto the nearest enemy; Rapid Fire and Spread Shot scale every weapon proportionally.
 - [ ] The Launch Barrier absorbs exactly the first unblocked hit of a run without costing levels or breaking the streak.
+- [ ] The Tractor Beam (5 ranks, 1,000 each) locks onto the nearest pickup within 220px, keeps that lock however far the ship flies until it's collected, accelerates it at the ship (30 → 360 px/s² by rank, capped at 520 px/s), then moves on to the next pickup in range.
 - [ ] Each secondary sells in 6 ranks at its listed escalating prices, buying a rank equips it, and Up/Down + Left/Right on the start screen choose among unlocked secondaries.
 - [ ] Escort Drone shoots down the bullet nearest the ship within 260px on its cooldown (5s → 1s over 5 ranks).
 - [ ] Each weapon's 10,000-gold ultimate is offered once the weapon is owned (at once for the Blaster) and works as described: Ricochet (one bounce off a side edge, never the top), Railgun (pierces every enemy; detonates touched enemy bullets plus any within 26px, no chaining), Flak (3 half-damage shards at ±20° when a pellet reaches max range), Swarm (one retarget after a kill, with a fresh 3s lifetime).
@@ -449,8 +451,9 @@ Opened with H from the start screen or the Game Over screen. Up/Down or W/S sele
 | Salvage Scanner | +1% weapon-upgrade drop chance (base 5%) | 3 | 500 / 1,000 / 2,000 |
 | Prospector | +5% gold from every source | 5 | 400 / 800 / 1,200 / 1,600 / 2,000 |
 | Head Start | Start each run one weapon level higher (smoothed enemy count starts there too) | 3 | 800 / 1,600 / 3,200 |
+| Tractor Beam | Reels pickups in, one at a time; each rank pulls harder (rules below) | 5 | 1,000 each |
 
-Buying every major upgrade and refit rank costs 49,100 gold (25,000 for the majors, 24,100 for the refits), and the four weapon ultimates add 40,000. The Hangar's third section sells the secondary weapons (§20), which add 113,500 more for every rank and ultimate of all three.
+Buying every major upgrade and refit rank costs 54,100 gold (25,000 for the majors, 29,100 for the refits), and the four weapon ultimates add 40,000. The Hangar's third section sells the secondary weapons (§20), which add 113,500 more for every rank and ultimate of all three.
 
 ### Second Ability Slot
 
@@ -462,6 +465,14 @@ Buying every major upgrade and refit rank costs 49,100 gold (25,000 for the majo
 - A thin gold ring around the ship at the start of every run.
 - The first hit that would cost levels (enemy bullet, ram, or Sentinel contact not already stopped by Shield or i-frames) breaks the barrier instead: no level loss, normal 0.4s i-frames, a gold flash and a "SHRUGGED" label. Like Shield, it doesn't reset the flawless streak or spoil a flawless boss fight (§7b).
 - The max-level shrug (§8b) is the same ring with the same rules, so a run can earn more of them; at most one is held at a time.
+
+### Tractor Beam
+
+- With at least one rank, a beam locks onto the nearest active pickup (upgrade or ability) within **220px** of the ship and pulls only that one.
+- The lock holds until that pickup is collected, however far the ship flies; only then does the beam look for the next pickup in range. A pooled pickup that is collected and immediately reused as a new drop elsewhere does not keep the lock (each spawn has its own id).
+- The pull starts from the pickup's current speed (its 60 px/s fall) and accelerates it straight at the ship's current position every frame, up to 520 px/s. Acceleration by rank: 30 / 70 / 130 / 220 / 360 px/s². Because the pickup always heads at the ship and its speed only grows, it always arrives eventually: at rank 1 a stationary ship reels a pickup in from full range in about 2.3s, at rank 5 in about 1s.
+- Look: a pale cyan (`#9ff6ff`) beam from the ship to the target, tapering from 4px at the ship to 18px at the target, with a thin bright core line and a ring around the target, pulsing gently. Drawn beneath pickups. A soft rising tone plays on each lock-on.
+- Abilities and Overdrive don't affect it; it stops when the ship is destroyed.
 
 ### Weapons
 

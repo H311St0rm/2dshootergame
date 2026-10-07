@@ -268,6 +268,7 @@ const MAX_FRAME_DT = 0.1;
 
 const DEPTH = {
   stars: 0,
+  tractor: 4,
   pickups: 5,
   enemies: 10,
   playerBullets: 15,
@@ -410,6 +411,18 @@ const DROPS = {
   fallSpeed: 60,
   doubleDropOffsetX: 9,
   despawnMargin: 20,
+};
+
+// Tractor Beam refit (§19): locks onto the nearest pickup in range and reels it in, one at a time.
+// The pull starts from the pickup's fall speed and accelerates it straight at the ship.
+const TRACTOR = {
+  range: 220,
+  accelerations: [30, 70, 130, 220, 360], // px/s² by rank, slow to fast
+  maxSpeed: 520,
+  color: 0x9ff6ff,
+  beamWidthAtShip: 4,
+  beamWidthAtTarget: 18,
+  targetRingRadius: 10,
 };
 
 const ABILITY_KEYS = ['shield', 'nova', 'rapid', 'spread', 'overdrive'];
@@ -604,6 +617,10 @@ const HANGAR = {
       id: 'headStart', name: 'HEAD START', perRank: 1, costs: [800, 1600, 3200],
       blurb: 'Start each run one weapon level higher per rank.',
     },
+    {
+      id: 'tractor', name: 'TRACTOR BEAM', costs: [1000, 1000, 1000, 1000, 1000],
+      blurb: `Locks onto the nearest pickup within ${TRACTOR.range}px and reels it in, one at a time, holding on however far you fly. Each rank pulls harder.`,
+    },
   ],
   secondaries: SECONDARY_ORDER.map((id) => ({
     id: `secondary_${id}`,
@@ -653,6 +670,7 @@ __exports.FLAK_SHARD = FLAK_SHARD;
 __exports.MAX_SHOTS_FOR_FLAK = MAX_SHOTS_FOR_FLAK;
 __exports.WEAPON = WEAPON;
 __exports.DROPS = DROPS;
+__exports.TRACTOR = TRACTOR;
 __exports.ABILITY_KEYS = ABILITY_KEYS;
 __exports.ABILITIES = ABILITIES;
 __exports.ENEMY_TYPES = ENEMY_TYPES;
@@ -1400,6 +1418,10 @@ class Sfx {
     this.tone(1400, 500, 0.08, 'square', 0.05);
   }
 
+  tractorLock() {
+    this.tone(320, 640, 0.12, 'sine', 0.08);
+  }
+
   deflect() {
     this.tone(400, 1200, 0.12, 'triangle', 0.18);
   }
@@ -1585,6 +1607,7 @@ function runModifiers(profile) {
     upgradeDropBonus: bonus('salvage'),
     goldMul: 1 + bonus('prospector'),
     startLevel: bonus('headStart'),
+    tractorRank: rankOf(profile, 'tractor'),
   };
 }
 
@@ -2366,13 +2389,13 @@ const { loadProfile, purchase, nextCost, rankOf, itemOwned, hasUltimate, nextIsU
 const { textStyle, formatGold } = __require('src/ui/Hud.js');
 
 const CX = GAME_WIDTH / 2;
-const ROW = { left: 24, right: GAME_WIDTH - 24, height: 28, step: 32 };
+const ROW = { left: 24, right: GAME_WIDTH - 24, height: 28, step: 30 };
 const GROUPS = [
   { label: 'MAJOR UPGRADES - BUY ONCE', items: HANGAR.major },
   { label: 'REFITS - STACKABLE RANKS', items: HANGAR.refits },
   { label: 'SECONDARY WEAPONS - UPGRADE RANKS', items: HANGAR.secondaries },
 ];
-const FIRST_LABEL_Y = 96;
+const FIRST_LABEL_Y = 92;
 const LABEL_TO_ROW = 22;
 const ROW_TO_LABEL = 30;
 // Pips end left of the widest status text ("ULT 10,000"), leaving room for the ultimate diamond.
@@ -2623,6 +2646,7 @@ const DifficultyManager = __require('src/systems/DifficultyManager.js').default;
 const SpawnManager = __require('src/systems/SpawnManager.js').default;
 const BossManager = __require('src/systems/BossManager.js').default;
 const SecondaryManager = __require('src/systems/SecondaryManager.js').default;
+const TractorBeam = __require('src/systems/TractorBeam.js').default;
 const Starfield = __require('src/systems/Starfield.js').default;
 const Sfx = __require('src/systems/Sfx.js').default;
 const { loadProfile, runModifiers, bankRun } = __require('src/systems/profile.js');
@@ -2667,6 +2691,7 @@ class GameScene extends Phaser.Scene {
     this.secondary = new SecondaryManager(
       this, this.mods.secondary, this.mods.secondaryRank, this.mods.secondaryUltimate,
     );
+    this.tractor = new TractorBeam(this, this.mods.tractorRank);
     this.hud = new Hud(this, this.abilities.capacity);
     this.emitters = new Map();
 
@@ -2756,6 +2781,7 @@ class GameScene extends Phaser.Scene {
     for (const pickup of this.pickups.getChildren()) {
       if (pickup.active) pickup.tick(dt);
     }
+    this.tractor.update(dt);
 
     const shielded = this.abilities.isActive('shield');
     this.player.tick(dt, shielded);
@@ -3480,16 +3506,21 @@ __exports.default = EnemyBullet;
 'use strict';
 const { DROPS, GAME_HEIGHT, DEPTH } = __require('src/config/constants.js');
 
+let nextSpawnId = 1;
+
 class Pickup extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y) {
     super(scene, x, y, 'pickup_upgrade');
     this.kind = null;
     this.age = 0;
+    this.spawnId = 0;
   }
 
   // kind is 'upgrade' or one of ABILITY_KEYS.
   spawn(kind, x, y) {
     this.kind = kind;
+    // Tells a reused pooled pickup apart from the drop it was before (the Tractor Beam's lock).
+    this.spawnId = nextSpawnId++;
     this.setTexture(kind === 'upgrade' ? 'pickup_upgrade' : `pickup_${kind}`);
     this.enableBody(true, x, y, true, true);
     this.setDepth(DEPTH.pickups);
@@ -3781,6 +3812,88 @@ class Boss extends Phaser.Physics.Arcade.Sprite {
 }
 
 __exports.default = Boss;
+},
+"src/systems/TractorBeam.js": function (__exports) {
+'use strict';
+const { TRACTOR, DEPTH } = __require('src/config/constants.js');
+
+// Tractor Beam refit (§19): locks onto the nearest pickup within range and reels it in, one at
+// a time. The lock holds until that pickup is collected, however far the ship flies, and the
+// pull keeps accelerating it straight at the ship, harder with each rank.
+class TractorBeam {
+  constructor(scene, rank) {
+    this.scene = scene;
+    this.acceleration = rank > 0 ? TRACTOR.accelerations[rank - 1] : 0;
+    this.target = null;
+    this.targetSpawnId = 0;
+    this.speed = 0;
+    this.clock = 0;
+    this.gfx = scene.add.graphics().setDepth(DEPTH.tractor);
+  }
+
+  update(dt) {
+    this.gfx.clear();
+    const player = this.scene.player;
+    if (!this.acceleration || !player.alive) {
+      this.target = null;
+      return;
+    }
+    // Pickups are pooled, so a collected target can come straight back as a new drop elsewhere.
+    if (this.target && (!this.target.active || this.target.spawnId !== this.targetSpawnId)) this.target = null;
+    if (!this.target) this.acquire(player);
+    const target = this.target;
+    if (!target) return;
+
+    const dx = player.x - target.x;
+    const dy = player.y - target.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    this.speed = Math.min(TRACTOR.maxSpeed, this.speed + this.acceleration * dt);
+    target.setVelocity((dx / distance) * this.speed, (dy / distance) * this.speed);
+    this.clock += dt;
+    this.draw(player, target, distance);
+  }
+
+  acquire(player) {
+    let best = null;
+    let bestDistance = TRACTOR.range ** 2;
+    for (const pickup of this.scene.pickups.getChildren()) {
+      if (!pickup.active) continue;
+      const distance = (pickup.x - player.x) ** 2 + (pickup.y - player.y) ** 2;
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        best = pickup;
+      }
+    }
+    if (!best) return;
+    this.target = best;
+    this.targetSpawnId = best.spawnId;
+    // The pull starts from the pickup's fall speed rather than stopping it dead.
+    this.speed = Math.hypot(best.body.velocity.x, best.body.velocity.y);
+    this.scene.sfx.tractorLock();
+  }
+
+  // A tapered, pulsing beam from the ship to its target, with a ring around the target.
+  draw(player, target, distance) {
+    const g = this.gfx;
+    const nx = -(target.y - player.y) / distance;
+    const ny = (target.x - player.x) / distance;
+    const near = TRACTOR.beamWidthAtShip / 2;
+    const far = TRACTOR.beamWidthAtTarget / 2;
+    const pulse = 0.75 + 0.25 * Math.sin(this.clock * 10);
+    g.fillStyle(TRACTOR.color, 0.18 * pulse);
+    g.fillPoints([
+      { x: player.x + nx * near, y: player.y + ny * near },
+      { x: target.x + nx * far, y: target.y + ny * far },
+      { x: target.x - nx * far, y: target.y - ny * far },
+      { x: player.x - nx * near, y: player.y - ny * near },
+    ], true);
+    g.lineStyle(1, TRACTOR.color, 0.6 * pulse);
+    g.lineBetween(player.x, player.y, target.x, target.y);
+    g.strokeCircle(target.x, target.y, TRACTOR.targetRingRadius);
+  }
+}
+
+__exports.default = TractorBeam;
 },
 "src/scenes/PauseScene.js": function (__exports) {
 'use strict';
