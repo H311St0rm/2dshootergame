@@ -4,7 +4,7 @@ import {
 import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
 import {
-  loadProfile, saveProfile, unlockedWeapons, isWeaponUnlocked, unlockedSecondaries, secondaryRank,
+  loadProfile, saveProfile, unlockedWeapons, isWeaponUnlocked, unlockedSecondaries, secondaryRank, hasUltimate,
 } from '../systems/profile.js';
 import { buildVolley } from '../systems/WeaponManager.js';
 import { describeSecondary } from '../systems/SecondaryManager.js';
@@ -157,15 +157,16 @@ export default class MenuScene extends Phaser.Scene {
 
     const secondaryId = this.profile.secondary;
     const secondary = this.rowUi.secondary;
+    const ultimate = Boolean(secondaryId) && hasUltimate(this.profile, secondaryId);
     if (secondaryId) {
       const rank = secondaryRank(this.profile, secondaryId);
-      secondary.name.setText(`${SECONDARIES[secondaryId].name}  R${rank}`);
-      secondary.detail.setText(describeSecondary(secondaryId, rank));
+      secondary.name.setText(`${SECONDARIES[secondaryId].name}  ${ultimate ? 'ULT' : `R${rank}`}`);
+      secondary.detail.setText(describeSecondary(secondaryId, rank, ultimate));
     } else {
       secondary.name.setText('NONE');
       secondary.detail.setText('Buy a secondary weapon in the Hangar.');
     }
-    this.drawSecondaryPreview(secondaryId, secondaryId ? secondaryRank(this.profile, secondaryId) : 0);
+    this.drawSecondaryPreview(secondaryId, ultimate);
 
     const lockedWeapons = WEAPON_ORDER.length - this.weapons.length;
     const lockedSecondaries = SECONDARY_ORDER.length - this.secondaries.length;
@@ -215,13 +216,12 @@ export default class MenuScene extends Phaser.Scene {
   }
 
   // Drawn relative to the ship so it bobs along with it.
-  drawSecondaryPreview(id, rank) {
+  drawSecondaryPreview(id, ultimate) {
     this.secondaryPreview.removeAll(true);
     if (!id) return;
     const color = SECONDARIES[id].color;
     if (id === 'drone') {
-      const count = SECONDARIES.drone.droneCounts[rank - 1];
-      [-1, 1].slice(0, count).forEach((side) => {
+      (ultimate ? [-1, 1] : [-1]).forEach((side) => {
         this.secondaryPreview.add(this.add.image(side * 56, 14, 'drone').setScale(2));
       });
       return;

@@ -2,7 +2,7 @@ import { GAME_WIDTH, HANGAR } from '../config/constants.js';
 import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
 import { describeSecondary } from '../systems/SecondaryManager.js';
-import { loadProfile, purchase, nextCost, rankOf, isOwned } from '../systems/profile.js';
+import { loadProfile, purchase, nextCost, rankOf, isOwned, hasUltimate, nextIsUltimate } from '../systems/profile.js';
 import { textStyle, formatGold } from '../ui/Hud.js';
 
 const CX = GAME_WIDTH / 2;
@@ -15,14 +15,18 @@ const GROUPS = [
 const FIRST_LABEL_Y = 96;
 const LABEL_TO_ROW = 22;
 const ROW_TO_LABEL = 30;
-const PIP = { size: 8, gap: 3, rightEdge: ROW.right - 72 };
+// Pips end left of the widest status text ("ULT 10,000"), leaving room for the ultimate diamond.
+const PIP = { size: 8, gap: 3, rightEdge: ROW.right - 112 };
 
 const COLORS = {
   affordable: '#ffd700',
   tooExpensive: '#55606e',
   owned: '#4dff88',
+  ultimate: '#ff7bf2',
   error: '#ff6060',
 };
+const ULTIMATE_HEX = 0xff7bf2;
+const BG_HEX = 0x05060a;
 
 export default class HangarScene extends Phaser.Scene {
   constructor() {
@@ -112,18 +116,25 @@ export default class HangarScene extends Phaser.Scene {
     const item = this.rows[this.selected].item;
     const cost = nextCost(this.profile, item);
     if (cost === null) {
-      this.showMessage(item.costs ? 'ALREADY AT MAX RANK' : 'ALREADY OWNED', COLORS.owned);
+      const done = item.ultimate ? 'ULTIMATE ALREADY OWNED' : item.costs ? 'ALREADY AT MAX RANK' : 'ALREADY OWNED';
+      this.showMessage(done, COLORS.owned);
       return;
     }
+    const buyingUltimate = nextIsUltimate(this.profile, item);
     if (!purchase(this.profile, item)) {
       this.sfx.denied();
       this.showMessage(`NEED ${formatGold(cost - this.profile.gold)} MORE GOLD`, COLORS.error);
       return;
     }
-    this.sfx.levelUp();
-    const suffix = item.costs ? ` - RANK ${rankOf(this.profile, item.id)}` : '';
     const equipped = item.weapon || item.secondary ? ' - EQUIPPED' : '';
-    this.showMessage(`BOUGHT ${item.name}${suffix}${equipped}`, COLORS.owned);
+    if (buyingUltimate) {
+      this.sfx.prestige();
+      this.showMessage(`UNLOCKED ${item.ultimate.name}${equipped}`, COLORS.ultimate);
+    } else {
+      this.sfx.levelUp();
+      const suffix = item.costs ? ` - RANK ${rankOf(this.profile, item.id)}` : '';
+      this.showMessage(`BOUGHT ${item.name}${suffix}${equipped}`, COLORS.owned);
+    }
     this.refresh();
   }
 
@@ -146,12 +157,15 @@ export default class HangarScene extends Phaser.Scene {
       const { item } = row;
       const cost = nextCost(this.profile, item);
       if (cost === null) {
-        row.status.setText(item.costs ? 'MAX' : 'OWNED').setColor(COLORS.owned);
+        row.status.setText(item.ultimate ? 'ULTIMATE' : item.costs ? 'MAX' : 'OWNED').setColor(COLORS.owned);
+      } else if (nextIsUltimate(this.profile, item)) {
+        row.status.setText(`ULT ${formatGold(cost)}`).setColor(gold >= cost ? COLORS.ultimate : COLORS.tooExpensive);
       } else {
         row.status.setText(formatGold(cost)).setColor(gold >= cost ? COLORS.affordable : COLORS.tooExpensive);
       }
       row.name.setColor(!item.costs && isOwned(this.profile, item.id) ? '#7fa9b5' : '#ffffff');
       if (item.costs) this.drawPips(row.y, rankOf(this.profile, item.id), item.costs.length);
+      if (item.ultimate) this.drawUltimateMark(row.y, item);
     }
 
     const row = this.rows[this.selected];
@@ -173,8 +187,35 @@ export default class HangarScene extends Phaser.Scene {
     if (!item.secondary) return `${item.blurb}\nRANK ${rank} OF ${max}`;
     const id = item.secondary;
     if (rank === 0) return `${item.blurb}\nRANK 1: ${describeSecondary(id, 1)}`;
-    if (rank === max) return `${item.blurb}\nMAX RANK: ${describeSecondary(id, rank)}`;
-    return `${item.blurb}\nNOW: ${describeSecondary(id, rank)}\nNEXT: ${describeSecondary(id, rank + 1)}`;
+    if (rank < max) {
+      return `${item.blurb}\nNOW: ${describeSecondary(id, rank)}\nNEXT: ${describeSecondary(id, rank + 1)}`;
+    }
+    const owned = hasUltimate(this.profile, id);
+    const heading = owned ? 'ULTIMATE OWNED' : 'ULTIMATE AVAILABLE';
+    return `MAX RANK: ${describeSecondary(id, rank, owned)}\n${heading}: ${item.ultimate.name}\n${item.ultimate.blurb}`;
+  }
+
+  // A diamond after the rank pips: outlined until the ultimate is bought, then filled.
+  drawUltimateMark(y, item) {
+    const g = this.pips;
+    const x = PIP.rightEdge + 10;
+    const r = 5;
+    const owned = hasUltimate(this.profile, item.secondary);
+    const available = nextIsUltimate(this.profile, item);
+    const diamond = (radius) => [
+      { x, y: y - radius },
+      { x: x + radius, y },
+      { x, y: y + radius },
+      { x: x - radius, y },
+    ];
+    // Outlines are built from two fills: diagonal strokes on this shared Graphics
+    // object did not render in testing, while fills always do.
+    g.fillStyle(owned || available ? ULTIMATE_HEX : 0x55606e, 1);
+    g.fillPoints(diamond(r), true);
+    if (!owned) {
+      g.fillStyle(BG_HEX, 1);
+      g.fillPoints(diamond(r - 1.5), true);
+    }
   }
 
   drawPips(y, rank, max) {

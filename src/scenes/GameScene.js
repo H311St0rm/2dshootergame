@@ -1,6 +1,6 @@
 import {
   PLAYER, PLAYER_BULLET, WEAPONS, DEFLECT_SHOT, DROPS, ABILITIES, ABILITY_KEYS, BOSS, SURVIVAL_GOLD, BARRIER,
-  EXPLOSION, TIMING, DEPTH, MAX_FRAME_DT,
+  MAX_LEVEL_PICKUP, EXPLOSION, TIMING, DEPTH, MAX_FRAME_DT,
 } from '../config/constants.js';
 import Player from '../entities/Player.js';
 import Enemy from '../entities/Enemy.js';
@@ -50,12 +50,15 @@ export default class GameScene extends Phaser.Scene {
     this.difficulty.smoothedWeaponLevel = this.mods.startLevel;
     this.spawner = new SpawnManager(this.difficulty, (type, x) => this.spawnEnemy(type, x));
     this.bosses = new BossManager(this);
-    this.secondary = new SecondaryManager(this, this.mods.secondary, this.mods.secondaryRank);
+    this.secondary = new SecondaryManager(
+      this, this.mods.secondary, this.mods.secondaryRank, this.mods.secondaryUltimate,
+    );
     this.hud = new Hud(this, this.abilities.capacity);
     this.emitters = new Map();
 
     this.gold = 0;
     this.survivalTimer = 0;
+    this.shrugProgress = 0;
     this.isGameOver = false;
 
     this.enemyFire = (enemy) => this.fireEnemyPattern(enemy);
@@ -117,7 +120,7 @@ export default class GameScene extends Phaser.Scene {
       if (enemy.active) enemy.tick(dt, slow, multiplier, this.enemyFire);
     }
     for (const bullet of this.enemyBullets.getChildren()) {
-      if (bullet.active) bullet.tick(slow);
+      if (bullet.active) bullet.tick(slow * this.secondary.bulletSpeedFactorAt(bullet.x, bullet.y));
     }
     for (const bullet of this.playerBullets.getChildren()) {
       if (bullet.active) bullet.tick(dt, this.findSeekerTarget);
@@ -176,6 +179,8 @@ export default class GameScene extends Phaser.Scene {
       bossMaxHp: boss.maxHp,
       abilities: this.abilities,
       secondary: this.secondary.id ? this.secondary : null,
+      shrugProgress: this.shrugProgress,
+      hasShrug: this.hasBarrier,
     };
   }
 
@@ -326,13 +331,14 @@ export default class GameScene extends Phaser.Scene {
     if (this.abilities.isActive('shield')) return;
     if (this.player.isInvulnerable) return;
 
-    // Like Shield, the launch barrier blocks the hit outright: no level loss, streak kept.
+    // The barrier ring (Launch Barrier or a max-level shrug) blocks the hit like Shield:
+    // no level loss, streak kept.
     if (this.hasBarrier) {
       this.hasBarrier = false;
       this.player.startInvulnerability();
       this.flash(this.player.x, this.player.y, BARRIER.color, 1.2, 300);
       this.sfx.playerHit();
-      this.hud.floatText(this.player.x, this.player.y - 22, 'BARRIER DOWN', '#ffd700');
+      this.hud.floatText(this.player.x, this.player.y - 22, 'SHRUGGED', '#ffd700');
       return;
     }
 
@@ -379,9 +385,23 @@ export default class GameScene extends Phaser.Scene {
     if (this.weapon.addLevel()) {
       this.sfx.levelUp();
       this.hud.floatText(x, y - 14, this.weapon.isAtMax ? 'MAX LVL!' : '+1 LVL', '#ffd700');
-    } else {
-      this.hud.floatText(x, y - 14, 'MAX', '#ffd700');
+      return;
     }
+    // Already at max: pay gold and fill the shrug meter. Only one shrug is held at a
+    // time, so a full meter waits until the current one breaks.
+    this.addGold(MAX_LEVEL_PICKUP.gold);
+    this.sfx.levelUp();
+    const needed = MAX_LEVEL_PICKUP.pickupsPerShrug;
+    this.shrugProgress = Math.min(needed, this.shrugProgress + 1);
+    if (this.shrugProgress >= needed && !this.hasBarrier) {
+      this.shrugProgress = 0;
+      this.hasBarrier = true;
+      this.sfx.prestige();
+      this.hud.floatText(x, y - 14, 'SHRUG READY', '#ffd700');
+      return;
+    }
+    const gained = Math.floor(MAX_LEVEL_PICKUP.gold * this.mods.goldMul);
+    this.hud.floatText(x, y - 14, `+${gained} GOLD`, '#ffd700');
   }
 
   collectAbility(kind, x, y) {

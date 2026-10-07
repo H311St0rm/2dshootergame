@@ -211,7 +211,7 @@ This is a second, independent pickup track from the ability system in §8. It pe
   2. Separately, roll 3% for an Ability drop (§8).
   3. Both can succeed on the same kill (0.15% of kills) — in that case, spawn both pickups at the death position, offset a few pixels apart horizontally so they don't overlap. Both can also both fail, in which case nothing drops.
 - Enemies killed by the Nova Bomb ability each roll independently using the same rules above.
-- Collecting an Upgrade pickup increases the player's weapon level by 1, up to the current `weaponLevelMax` (starts at 10 — see the Prestige rule in §7b for how this can rise). Collecting one while already at `weaponLevelMax` has no further effect (the pickup is simply consumed).
+- Collecting an Upgrade pickup increases the player's weapon level by 1, up to the current `weaponLevelMax` (starts at 10 — see the Prestige rule in §7b for how this can rise). Collecting one while already at `weaponLevelMax` instead pays **+100 gold** (× Prospector) and fills one step of a 5-step **shrug meter**. The 5th step grants a **damage shrug**: the same gold barrier ring as the Launch Barrier (§19), which absorbs the next unblocked hit with no level loss. Only one shrug (or barrier) is held at a time; while one is held, the meter stays full at 5, and the next max-level pickup after it breaks grants a new one at once. The meter keeps its progress for the whole run, even if hits knock the player below max.
 
 ### Weapon level table
 
@@ -315,7 +315,7 @@ All bullets/enemies/pickups are destroyed and removed once they fully exit the s
 
 ## 12. HUD
 
-- **Top-left:** Weapon Level meter — a bar filled to `(weaponLevel - weaponLevelMin) / (weaponLevelMax - weaponLevelMin)`, labeled with the exact numeric level (e.g. "LVL 8"). Empty means the next hit is lethal. Using a fraction rather than fixed pips means it reads correctly even after the range widens via a prestige (§7b). This single meter replaces a traditional health bar; see §8b. The equipped weapon's name sits under the meter.
+- **Top-left:** Weapon Level meter — a bar filled to `(weaponLevel - weaponLevelMin) / (weaponLevelMax - weaponLevelMin)`, labeled with the exact numeric level (e.g. "LVL 8"). Empty means the next hit is lethal. Using a fraction rather than fixed pips means it reads correctly even after the range widens via a prestige (§7b). This single meter replaces a traditional health bar; see §8b. The equipped weapon's name sits under the meter, and under that, once the player is at max level (or has progress), "SHRUG" with 5 small pips for the shrug meter (§8b) — the label turns gold while a shrug is held.
 - **Top-right:** Live gold ("GOLD 1,234"), with "BEST RUN N" directly beneath it.
 - **Bottom-center:** One ability slot box, or two side by side with the Second Ability Slot (§19). Empty slots are greyed outlines. Slot 1 shows its icon brightly with its name to the left and a pulsing "[SPACE]" hint to the right; slot 2's icon is dimmed as the queued one.
 - **Bottom-right (only with a secondary equipped):** the secondary's name over an 84px charge bar that fills during its cooldown and turns bright when it's ready (§20).
@@ -389,7 +389,9 @@ Do not implement any of the following — they are intentionally out of scope:
 - [ ] Lance beams pierce one enemy; Scatter pellets vanish at 320px; Seeker missiles home onto the nearest enemy; Rapid Fire and Spread Shot scale every weapon proportionally.
 - [ ] The Launch Barrier absorbs exactly the first unblocked hit of a run without costing levels or breaking the streak.
 - [ ] Each secondary sells in 6 ranks at its listed escalating prices, buying a rank equips it, and Up/Down + Left/Right on the start screen choose among unlocked secondaries.
-- [ ] Escort Drone shoots down the bullet nearest the ship within 260px on its cooldown (5s → 1s), with a second, staggered drone at rank 6.
+- [ ] Escort Drone shoots down the bullet nearest the ship within 260px on its cooldown (5s → 1s over 5 ranks).
+- [ ] Each secondary's 10,000-gold ultimate is only offered at max rank and works as described: Twin Drones (second staggered drone), Chain Lightning (+20px range, every arc jumps once within 80px), Stasis Field (bullets inside the field at 25% speed).
+- [ ] A weapon-upgrade pickup at max level pays +100 gold and fills the shrug meter; every 5th grants a one-hit shrug (gold ring), at most one held at a time.
 - [ ] Tesla Coil arcs into the nearest enemies, Sentinel and bullets within range, capped per rank, on its cooldown (2s/60px → 0.5s/130px).
 - [ ] Repulsor Field burns enemies inside it every 0.5s and, on its cooldown (8s → 2s), turns every bullet inside it into a player shot aimed at the nearest enemy.
 - [ ] Every secondary holds its charge when nothing is in range, and its kills award gold and drops.
@@ -429,7 +431,7 @@ Opened with H from the start screen or the Game Over screen. Up/Down or W/S sele
 | Prospector | +5% gold from every source | 5 | 400 / 800 / 1,200 / 1,600 / 2,000 |
 | Head Start | Start each run one weapon level higher (smoothed enemy count starts there too) | 3 | 800 / 1,600 / 3,200 |
 
-Buying every major upgrade and refit rank costs 49,100 gold (25,000 for the majors, 24,100 for the refits). The Hangar's third section sells the secondary weapons (§20), which add 93,500 more for all ranks of all three.
+Buying every major upgrade and refit rank costs 49,100 gold (25,000 for the majors, 24,100 for the refits). The Hangar's third section sells the secondary weapons (§20), which add 113,500 more for every rank and ultimate of all three.
 
 ### Second Ability Slot
 
@@ -439,8 +441,8 @@ Buying every major upgrade and refit rank costs 49,100 gold (25,000 for the majo
 ### Launch Barrier
 
 - A thin gold ring around the ship at the start of every run.
-- The first hit that would cost levels (enemy bullet, ram, or Sentinel contact not already stopped by Shield or i-frames) breaks the barrier instead: no level loss, normal 0.4s i-frames, a gold flash and a "BARRIER DOWN" label. Like Shield, it doesn't reset the flawless streak or spoil a flawless boss fight (§7b).
-- One per run; nothing restores it mid-run.
+- The first hit that would cost levels (enemy bullet, ram, or Sentinel contact not already stopped by Shield or i-frames) breaks the barrier instead: no level loss, normal 0.4s i-frames, a gold flash and a "SHRUGGED" label. Like Shield, it doesn't reset the flawless streak or spoil a flawless boss fight (§7b).
+- The max-level shrug (§8b) is the same ring with the same rules, so a run can earn more of them; at most one is held at a time.
 
 ### Weapons
 
@@ -460,14 +462,14 @@ All four weapons read the same level table (§8b) and reshape it, so upgrades, t
 
 ## 20. Secondary weapons (defensive)
 
-A secondary weapon fights alongside the ship automatically — it needs no button. The player equips one at a time. Each is bought in the Hangar's third section, SECONDARY WEAPONS, in 6 ranks with escalating prices; buying any rank equips that secondary. Ranks are permanent.
+A secondary weapon fights alongside the ship automatically — it needs no button. The player equips one at a time. Each is bought in the Hangar's third section, SECONDARY WEAPONS, in ranks with escalating prices (5 for the Escort Drone, 6 for the others); buying any rank equips that secondary. At max rank, the same row then sells that secondary's **ultimate** (see Ultimates below). Ranks and ultimates are permanent.
 
 ### Shared rules
 
 - **Holding a charge:** every secondary counts its cooldown up to full and then waits. If nothing is in range when it's ready, it holds the charge and fires the instant a target appears.
 - **Kills** by a secondary award gold, roll drops and count toward boss triggers, exactly like bullet-kills (§11).
 - **The Sentinel** counts as an enemy for the Tesla Coil and the field's burn, measured to the edge of its body (about 28px from its center). Secondaries ignore Overdrive.
-- **Selecting:** on the start screen, Up/Down (W/S) focus the PRIMARY or SECONDARY row; with SECONDARY focused, Left/Right (A/D) cycle through unlocked secondaries. The row shows the secondary's name, rank ("ESCORT DRONE  R6") and current stats, and its look is previewed around the ship. With none bought, it reads NONE.
+- **Selecting:** on the start screen, Up/Down (W/S) focus the PRIMARY or SECONDARY row; with SECONDARY focused, Left/Right (A/D) cycle through unlocked secondaries. The row shows the secondary's name, rank ("TESLA COIL  R4", or "ULT" once the ultimate is owned) and current stats, and its look is previewed around the ship. With none bought, it reads NONE.
 - **HUD:** the bottom-right gauge (§12).
 - **Hangar text:** a secondary's row description shows the current rank's stats and the next rank's ("NOW: … NEXT: …").
 
@@ -475,16 +477,15 @@ A secondary weapon fights alongside the ship automatically — it needs no butto
 
 Small cyan drones hover beside the ship (26px to each side, 6px below, easing after it) and each shoots down the enemy bullet nearest the ship, if one is within 260px, with an instant laser.
 
-| Rank | Cooldown | Drones | Cost |
-|---|---|---|---|
-| 1 | 5s | 1 | 1,500 |
-| 2 | 4s | 1 | 2,500 |
-| 3 | 3s | 1 | 3,500 |
-| 4 | 2s | 1 | 5,000 |
-| 5 | 1s | 1 | 7,000 |
-| 6 | 1s | 2 | 10,000 |
+| Rank | Cooldown | Cost |
+|---|---|---|
+| 1 | 5s | 1,500 |
+| 2 | 4s | 2,500 |
+| 3 | 3s | 3,500 |
+| 4 | 2s | 5,000 |
+| 5 | 1s | 7,000 |
 
-At rank 6 the second drone starts half a cooldown behind the first, so the pair alternate shots. Each drone has its own cooldown.
+The second drone comes from the Twin Drones ultimate (below).
 
 ### Tesla Coil
 
@@ -515,4 +516,16 @@ A translucent mint circle around the ship.
 | 5 | 3s | 72px | 7,500 |
 | 6 | 2s | 76px | 10,000 |
 
-Fully upgrading a secondary costs 29,500 (Escort Drone) or 32,000 (Tesla Coil, Repulsor Field).
+### Ultimates
+
+Each secondary has one ultimate, sold for **10,000 gold** in its Hangar row only after its last rank is bought. In the Hangar, a maxed row's price reads "ULT 10,000" in magenta, and a diamond after the rank pips shows the ultimate's state: grey outline while locked, magenta outline when available, filled once owned (the row then reads ULTIMATE). The description shows the max-rank stats plus the ultimate's name and effect.
+
+| Secondary | Ultimate | Effect |
+|---|---|---|
+| Escort Drone | Twin Drones | A second drone hovers on the other side, starting half a cooldown behind the first so the pair alternate shots. Each drone keeps its own cooldown. |
+| Tesla Coil | Chain Lightning | Range +20px (150px at max rank). After each discharge, every arc jumps once more from the target it hit to the nearest target within 80px that hasn't been struck this discharge, for the same 2 damage (or destroying a bullet). |
+| Repulsor Field | Stasis Field | Enemy bullets inside the field move at 25% of their speed (stacking with Overdrive). A second, fainter ring inside the field shows it's active. Slowed bullets linger in the field, so the next deflect catches more of them. |
+
+Fully upgrading a secondary, ultimate included, costs 29,500 (Escort Drone) or 42,000 (Tesla Coil, Repulsor Field).
+
+A save from before the drone's rank track was shortened may hold drone rank 6 (which then meant the second drone); it loads as rank 5 with Twin Drones owned.

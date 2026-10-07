@@ -6,14 +6,20 @@ const ARC_SEGMENT = 12;
 // Rough half-size of the Sentinel's hitbox, so ranged effects reach its edge, not just its center.
 const BOSS_REACH = 28;
 
-export function secondaryStats(id, rank) {
+export function secondaryStats(id, rank, ultimate = false) {
   const def = SECONDARIES[id];
   const i = Phaser.Math.Clamp(rank, 1, def.costs.length) - 1;
   if (id === 'drone') {
-    return { cooldown: def.cooldowns[i], drones: def.droneCounts[i], range: def.range };
+    return { cooldown: def.cooldowns[i], drones: ultimate ? 2 : 1, range: def.range };
   }
   if (id === 'tesla') {
-    return { cooldown: def.cooldowns[i], range: def.ranges[i], maxTargets: def.maxTargets[i], damage: def.damage };
+    return {
+      cooldown: def.cooldowns[i],
+      range: def.ranges[i] + (ultimate ? def.ultimate.rangeBonus : 0),
+      maxTargets: def.maxTargets[i],
+      damage: def.damage,
+      chainRange: ultimate ? def.ultimate.chainRange : 0,
+    };
   }
   return {
     cooldown: def.deflectCooldowns[i],
@@ -21,27 +27,31 @@ export function secondaryStats(id, rank) {
     tickInterval: def.tickInterval,
     tickDamage: def.tickDamage,
     deflectDamage: def.deflectDamage,
+    bulletSpeedFactor: ultimate ? def.ultimate.bulletSpeedFactor : 1,
   };
 }
 
-export function describeSecondary(id, rank) {
-  const s = secondaryStats(id, rank);
+export function describeSecondary(id, rank, ultimate = false) {
+  const s = secondaryStats(id, rank, ultimate);
   if (id === 'drone') return `${s.drones} DRONE${s.drones > 1 ? 'S' : ''}, ${s.cooldown}S COOLDOWN`;
-  if (id === 'tesla') return `${s.cooldown}S COOLDOWN, ${s.range}PX RANGE, ${s.maxTargets} TARGETS`;
-  return `DEFLECT EVERY ${s.cooldown}S, ${s.radius}PX FIELD`;
+  if (id === 'tesla') {
+    return `${s.cooldown}S COOLDOWN, ${s.range}PX RANGE, ${s.maxTargets} TARGETS${s.chainRange ? ', ARCS CHAIN' : ''}`;
+  }
+  return `DEFLECT EVERY ${s.cooldown}S, ${s.radius}PX FIELD${s.bulletSpeedFactor < 1 ? ', BULLETS SLOWED' : ''}`;
 }
 
 // Runs the equipped defensive secondary (§20). Every effect holds its charge
 // when there is nothing to hit, so a ready secondary fires the instant a target appears.
 export default class SecondaryManager {
-  constructor(scene, id, rank) {
+  constructor(scene, id, rank, ultimate = false) {
     this.scene = scene;
     this.id = id && rank > 0 ? id : null;
     this.zaps = [];
     if (!this.id) return;
 
     this.def = SECONDARIES[this.id];
-    this.stats = secondaryStats(this.id, rank);
+    this.ultimate = ultimate;
+    this.stats = secondaryStats(this.id, rank, ultimate);
     this.fx = scene.add.graphics().setDepth(DEPTH.particles);
     this.timer = 0;
 
@@ -74,6 +84,14 @@ export default class SecondaryManager {
     if (!this.id) return 0;
     const charge = this.id === 'drone' ? Math.max(...this.drones.map((d) => d.timer)) : this.timer;
     return Math.min(1, charge / this.stats.cooldown);
+  }
+
+  // Stasis Field ultimate: enemy bullets inside the field move at a fraction of their speed.
+  bulletSpeedFactorAt(x, y) {
+    if (this.id !== 'field' || this.stats.bulletSpeedFactor === 1 || !this.scene.player.alive) return 1;
+    const { player } = this.scene;
+    const inside = (x - player.x) ** 2 + (y - player.y) ** 2 <= this.stats.radius ** 2;
+    return inside ? this.stats.bulletSpeedFactor : 1;
   }
 
   update(dt) {
@@ -133,9 +151,21 @@ export default class SecondaryManager {
     if (targets.length === 0) return;
 
     this.timer = 0;
+    const struck = new Set(targets.map((t) => t.object));
+    const origins = targets.map((t) => ({ x: t.object.x, y: t.object.y }));
     for (const target of targets) {
       this.addArc(x, y, target.object.x, target.object.y);
       this.strike(target, this.stats.damage);
+    }
+    // Chain Lightning ultimate: each arc jumps once more to the nearest target it hasn't struck.
+    if (this.stats.chainRange) {
+      for (const origin of origins) {
+        const next = this.targetsInRange(origin.x, origin.y, this.stats.chainRange).find((t) => !struck.has(t.object));
+        if (!next) continue;
+        struck.add(next.object);
+        this.addArc(origin.x, origin.y, next.object.x, next.object.y);
+        this.strike(next, this.stats.damage);
+      }
     }
     this.scene.sfx.teslaArc();
   }
@@ -203,6 +233,10 @@ export default class SecondaryManager {
     g.fillCircle(x, y, radius);
     g.lineStyle(1, this.def.color, (ready ? 0.55 : 0.2) + 0.2 * shimmer);
     g.strokeCircle(x, y, radius);
+    if (this.stats.bulletSpeedFactor < 1) {
+      g.lineStyle(1, this.def.color, 0.18 + 0.12 * (1 - shimmer));
+      g.strokeCircle(x, y, radius - 6);
+    }
   }
 
   // --- Effects --------------------------------------------------------------

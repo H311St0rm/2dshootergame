@@ -26,6 +26,11 @@ export function loadProfile() {
       if (isPlainObject(saved.ranks)) profile.ranks = saved.ranks;
       if (WEAPONS[saved.weapon]) profile.weapon = saved.weapon;
       if (SECONDARIES[saved.secondary]) profile.secondary = saved.secondary;
+      // The drone once had a 6th rank that added the second drone; that is now its ultimate.
+      if (profile.ranks.secondary_drone > SECONDARIES.drone.costs.length) {
+        profile.ranks.secondary_drone = SECONDARIES.drone.costs.length;
+        profile.unlocks.ultimate_drone = true;
+      }
     } else {
       const legacyBest = parseInt(window.localStorage.getItem(LEGACY_HIGH_SCORE_KEY), 10);
       if (isCount(legacyBest)) profile.best = legacyBest;
@@ -74,11 +79,21 @@ export function unlockedSecondaries(profile) {
   return SECONDARY_ORDER.filter((id) => secondaryRank(profile, id) > 0);
 }
 
-// Returns null once the item is owned or fully ranked.
+export function hasUltimate(profile, secondaryId) {
+  return isOwned(profile, `ultimate_${secondaryId}`);
+}
+
+// True when the item's next purchase is its secondary ultimate (only offered at max rank).
+export function nextIsUltimate(profile, item) {
+  return Boolean(item.ultimate) && rankOf(profile, item.id) === item.costs.length && !hasUltimate(profile, item.secondary);
+}
+
+// Returns null once the item is owned or fully ranked (and, for secondaries, its ultimate bought).
 export function nextCost(profile, item) {
   if (item.costs) {
     const rank = rankOf(profile, item.id);
-    return rank < item.costs.length ? item.costs[rank] : null;
+    if (rank < item.costs.length) return item.costs[rank];
+    return nextIsUltimate(profile, item) ? item.ultimate.cost : null;
   }
   return isOwned(profile, item.id) ? null : item.cost;
 }
@@ -86,8 +101,10 @@ export function nextCost(profile, item) {
 export function purchase(profile, item) {
   const cost = nextCost(profile, item);
   if (cost === null || profile.gold < cost) return false;
+  const ultimate = nextIsUltimate(profile, item);
   profile.gold -= cost;
-  if (item.costs) profile.ranks[item.id] = rankOf(profile, item.id) + 1;
+  if (ultimate) profile.unlocks[`ultimate_${item.secondary}`] = true;
+  else if (item.costs) profile.ranks[item.id] = rankOf(profile, item.id) + 1;
   else profile.unlocks[item.id] = true;
   if (item.weapon) profile.weapon = item.weapon;
   if (item.secondary) profile.secondary = item.secondary;
@@ -111,6 +128,7 @@ export function runModifiers(profile) {
     weapon: profile.weapon,
     secondary: profile.secondary,
     secondaryRank: profile.secondary ? secondaryRank(profile, profile.secondary) : 0,
+    secondaryUltimate: profile.secondary ? hasUltimate(profile, profile.secondary) : false,
     abilitySlots: isOwned(profile, 'secondSlot') ? 2 : 1,
     startBarrier: isOwned(profile, 'startBarrier'),
     moveSpeedMul: 1 + bonus('thrusters'),

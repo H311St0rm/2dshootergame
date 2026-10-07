@@ -1,4 +1,4 @@
-import { GAME_WIDTH, GAME_HEIGHT, FONT, DEPTH, ABILITIES, BOSS } from '../config/constants.js';
+import { GAME_WIDTH, GAME_HEIGHT, FONT, DEPTH, ABILITIES, BOSS, MAX_LEVEL_PICKUP } from '../config/constants.js';
 import { TIMED_ABILITIES } from '../systems/AbilityManager.js';
 
 const METER = { x: 12, y: 30, width: 128, height: 8 };
@@ -6,6 +6,7 @@ const BOSS_BAR = { x: 40, y: 68, width: 400, height: 8 };
 const SLOT = { x: GAME_WIDTH / 2, y: GAME_HEIGHT - 26, size: 36, gap: 8 };
 const EFFECT = { x: 18, y: GAME_HEIGHT - 20, rowGap: 20, barWidth: 56, barHeight: 5 };
 const SECONDARY = { right: GAME_WIDTH - 12, y: GAME_HEIGHT - 36, barWidth: 84, barHeight: 4 };
+const SHRUG = { x: 12, y: 60, pipX: 52, pip: 6, gap: 3 };
 
 const COLORS = {
   meter: 0x4de3ff,
@@ -60,6 +61,9 @@ export default class Hud {
     this.slotName = text(firstX - SLOT.size / 2 - 8, SLOT.y, 12, '#ffffff', 1, 0.5);
     this.slotHint = text(lastX + SLOT.size / 2 + 8, SLOT.y, 12, '#ffffff', 0, 0.5).setText('[SPACE]');
 
+    this.shrugText = text(SHRUG.x, SHRUG.y, 10, '#7fa9b5', 0, 0.5).setText('SHRUG');
+    this.shrugPips = add.graphics().setDepth(DEPTH.hud);
+
     this.secondaryText = text(SECONDARY.right, SECONDARY.y, 10, '#7fa9b5', 1);
     this.secondaryBar = add.graphics().setDepth(DEPTH.hud);
 
@@ -86,6 +90,28 @@ export default class Hud {
     this.drawAbilitySlots(state.abilities.slots);
     this.drawActiveEffects(state.abilities);
     this.drawSecondary(state.secondary);
+    this.drawShrugMeter(state);
+  }
+
+  // Progress toward the next max-level shrug; the label turns gold while one is held.
+  drawShrugMeter({ atMax, shrugProgress, hasShrug }) {
+    const g = this.shrugPips;
+    g.clear();
+    const visible = atMax || shrugProgress > 0;
+    this.shrugText.setVisible(visible);
+    if (!visible) return;
+    this.shrugText.setColor(hasShrug ? '#ffd700' : '#7fa9b5');
+    for (let i = 0; i < MAX_LEVEL_PICKUP.pickupsPerShrug; i++) {
+      const x = SHRUG.pipX + i * (SHRUG.pip + SHRUG.gap);
+      const top = SHRUG.y - SHRUG.pip / 2;
+      if (i < shrugProgress) {
+        g.fillStyle(0xffd700, 1);
+        g.fillRect(x, top, SHRUG.pip, SHRUG.pip);
+      } else {
+        g.lineStyle(1, 0x55606e, 1);
+        g.strokeRect(x + 0.5, top + 0.5, SHRUG.pip - 1, SHRUG.pip - 1);
+      }
+    }
   }
 
   drawSecondary(secondary) {

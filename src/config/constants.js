@@ -214,13 +214,16 @@ export const SECONDARIES = {
   drone: {
     id: 'drone', name: 'ESCORT DRONE', color: 0x7ff0ff,
     blurb: 'A drone flies beside you and shoots down the enemy bullet closest to you.',
-    costs: [1500, 2500, 3500, 5000, 7000, 10000],
-    cooldowns: [5, 4, 3, 2, 1, 1],
-    droneCounts: [1, 1, 1, 1, 1, 2],
+    costs: [1500, 2500, 3500, 5000, 7000],
+    cooldowns: [5, 4, 3, 2, 1],
     range: 260,
     offsetX: 26,
     offsetY: 6,
     followRate: 12,
+    ultimate: {
+      name: 'TWIN DRONES', cost: 10000,
+      blurb: 'A second drone joins on your other side, half a cooldown behind the first.',
+    },
   },
   tesla: {
     id: 'tesla', name: 'TESLA COIL', color: 0xbfe9ff,
@@ -230,6 +233,10 @@ export const SECONDARIES = {
     ranges: [60, 74, 88, 102, 116, 130],
     maxTargets: [3, 4, 5, 6, 7, 8],
     damage: 2,
+    ultimate: {
+      name: 'CHAIN LIGHTNING', cost: 10000, rangeBonus: 20, chainRange: 80,
+      blurb: 'Every arc jumps once more to a target within 80px of the first, and range grows by 20px.',
+    },
   },
   field: {
     id: 'field', name: 'REPULSOR FIELD', color: 0x4dffb0,
@@ -240,7 +247,18 @@ export const SECONDARIES = {
     tickInterval: 0.5,
     tickDamage: 1,
     deflectDamage: 3,
+    ultimate: {
+      name: 'STASIS FIELD', cost: 10000, bulletSpeedFactor: 0.25,
+      blurb: 'Enemy bullets inside the field crawl at a quarter of their speed.',
+    },
   },
+};
+
+// Weapon-upgrade pickups collected while already at max weapon level: each pays
+// gold, and every `pickupsPerShrug` grants a one-hit damage shrug (the barrier ring).
+export const MAX_LEVEL_PICKUP = {
+  gold: 100,
+  pickupsPerShrug: 5,
 };
 
 // Bullets thrown back by the Repulsor Field fly as player shots.
@@ -299,6 +317,7 @@ export const HANGAR = {
     name: SECONDARIES[id].name,
     secondary: id,
     costs: SECONDARIES[id].costs,
+    ultimate: SECONDARIES[id].ultimate,
     blurb: SECONDARIES[id].blurb,
   })),
 };
