@@ -1,5 +1,6 @@
 import { GAME_WIDTH, GAME_HEIGHT, DEPTH, TIMING } from '../config/constants.js';
 import Starfield from '../systems/Starfield.js';
+import { fitCamera } from '../systems/display.js';
 import { textStyle, formatGold } from '../ui/Hud.js';
 
 const CX = GAME_WIDTH / 2;
@@ -19,6 +20,7 @@ export default class GameOverScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.starfield = new Starfield(this);
     this.leaving = false;
     this.acceptingInput = false;

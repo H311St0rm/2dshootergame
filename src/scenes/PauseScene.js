@@ -1,4 +1,5 @@
 import { GAME_WIDTH, GAME_HEIGHT } from '../config/constants.js';
+import { fitCamera } from '../systems/display.js';
 import { textStyle } from '../ui/Hud.js';
 
 export default class PauseScene extends Phaser.Scene {
@@ -7,6 +8,7 @@ export default class PauseScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6);
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20, 'PAUSED', textStyle(36, '#4de3ff')).setOrigin(0.5);
     this.add

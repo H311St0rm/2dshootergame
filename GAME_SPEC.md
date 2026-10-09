@@ -81,12 +81,14 @@ src/
     TractorBeam.js           # The Tractor Beam refit: locks onto a pickup and reels it in (§19)
     Starfield.js             # Parallax scrolling background
     Sfx.js                   # Procedural Web Audio sound effects (§15)
+    display.js               # Render scale: canvas sized to the screen, cameras zoomed to fit, sharp text (§4)
     profile.js               # Saved bank, best run, purchases and chosen weapon; run modifiers (§13, §19)
 ```
 
 ## 4. Screen & camera
 
-- **Resolution:** 480 × 800 (portrait), `Phaser.Scale.FIT`, `autoCenter: CENTER_BOTH`.
+- **Resolution:** a 480 × 800 (portrait) game world, `Phaser.Scale.FIT`, `autoCenter: CENTER_BOTH`. All positions, sizes, speeds and hitboxes in this doc are in world pixels.
+- **Render scale (sharp text on any screen):** the canvas is rendered at the size it's actually shown, not stretched from 480 × 800. Render scale = the fitted on-screen size ÷ 480 × `devicePixelRatio`, clamped to 1–4 and rounded to 1/160 steps (480 and 800 share a factor of 160, so the canvas stays exactly 3:5). The canvas is 480 × 800 × that scale; every scene's camera zooms by the same factor, centered on (240, 400), so it shows exactly the 480 × 800 world; and all text renders at that resolution, landing 1:1 on screen pixels. When the window is resized or zoomed, or moved to a screen with a different pixel density, the canvas is resized and every running, paused or sleeping scene refits its camera and re-renders its text. Below 1× the browser shrinks the 480 × 800 canvas instead. Camera shake intensities are divided by zoom², because Phaser's shake grows with zoom², so a shake moves the same share of the screen at any scale. Pixel-art sprites stay nearest-neighbor, as before.
 - **Background color:** `#05060a` (near-black navy).
 - **Background effect:** Two parallax star layers — small white/gray dots scrolling straight down at 20 px/s (far layer, dimmer/smaller dots) and 50 px/s (near layer, brighter/larger dots). When a star passes the bottom edge, wrap it back to a random x at the top. This is what sells "traveling forward" — the ship's screen position doesn't need to move for this effect.
 
@@ -382,6 +384,7 @@ Do not implement any of the following — they are intentionally out of scope:
 ## 17. Definition of done (acceptance checklist)
 
 - [ ] Served from any static file server, `index.html` runs with zero build step and zero console errors.
+- [ ] Text is sharp at any window size and on high-DPI screens: the canvas renders at its on-screen size × devicePixelRatio, every camera shows exactly the 480 × 800 world, and resizing the window re-renders at the new size.
 - [ ] Start screen shows title, weapon select, controls, gold bank, best run, and working Launch and Hangar prompts.
 - [ ] Ship moves smoothly with Arrow Keys and WASD, normalized diagonal speed, clamped to bounds.
 - [ ] Ship auto-fires continuously with no player input required.

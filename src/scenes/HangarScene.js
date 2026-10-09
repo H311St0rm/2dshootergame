@@ -3,6 +3,7 @@ import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
 import { describeSecondary } from '../systems/SecondaryManager.js';
 import { loadProfile, purchase, nextCost, rankOf, itemOwned, hasUltimate, nextIsUltimate } from '../systems/profile.js';
+import { fitCamera } from '../systems/display.js';
 import { textStyle, formatGold } from '../ui/Hud.js';
 
 const CX = GAME_WIDTH / 2;
@@ -34,6 +35,7 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.starfield = new Starfield(this);
     this.sfx = new Sfx(this);
     this.profile = loadProfile();

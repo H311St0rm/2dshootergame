@@ -51,19 +51,23 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 const __modules = {
 "src/main.js": function (__exports) {
 'use strict';
-const { GAME_WIDTH, GAME_HEIGHT, BG_COLOR } = __require('src/config/constants.js');
+const { BG_COLOR } = __require('src/config/constants.js');
 const BootScene = __require('src/scenes/BootScene.js').default;
 const MenuScene = __require('src/scenes/MenuScene.js').default;
 const HangarScene = __require('src/scenes/HangarScene.js').default;
 const GameScene = __require('src/scenes/GameScene.js').default;
 const PauseScene = __require('src/scenes/PauseScene.js').default;
 const GameOverScene = __require('src/scenes/GameOverScene.js').default;
+const { initialCanvasSize, trackDisplaySize } = __require('src/systems/display.js');
+
+// The canvas matches the size it's shown at; cameras zoom the GAME_WIDTH × GAME_HEIGHT world to fit (§4).
+const canvasSize = initialCanvasSize(document.getElementById('game-container'));
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game-container',
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
+  width: canvasSize.width,
+  height: canvasSize.height,
   backgroundColor: BG_COLOR,
   pixelArt: true,
   physics: {
@@ -76,6 +80,7 @@ const game = new Phaser.Game({
   },
   scene: [BootScene, MenuScene, HangarScene, GameScene, PauseScene, GameOverScene],
 });
+trackDisplaySize(game);
 
 __exports.game = game;
 },
@@ -1006,6 +1011,7 @@ const {
 } = __require('src/systems/profile.js');
 const { buildVolley } = __require('src/systems/WeaponManager.js');
 const { describeSecondary } = __require('src/systems/SecondaryManager.js');
+const { fitCamera } = __require('src/systems/display.js');
 const { textStyle, formatGold } = __require('src/ui/Hud.js');
 
 const CX = GAME_WIDTH / 2;
@@ -1029,6 +1035,7 @@ class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.starfield = new Starfield(this);
     this.sfx = new Sfx(this);
     this.profile = loadProfile();
@@ -2055,10 +2062,88 @@ __exports.default = SecondaryManager;
 __exports.secondaryStats = secondaryStats;
 __exports.describeSecondary = describeSecondary;
 },
+"src/systems/display.js": function (__exports) {
+'use strict';
+const { GAME_WIDTH, GAME_HEIGHT } = __require('src/config/constants.js');
+
+// The world is always GAME_WIDTH × GAME_HEIGHT, but the canvas is rendered at the size it is
+// actually shown (its CSS size × devicePixelRatio) and every camera zooms the world up to fill
+// it (§4). Without this the browser stretches a 480×800 picture across the screen and small
+// text turns blocky. Text renders at the same scale (textStyle), so it lands 1:1 on screen pixels.
+
+// 480 and 800 share a factor of 160, so scales in 1/160 steps keep the canvas exactly 3:5.
+const SCALE_STEP = 160;
+const MIN_SCALE = 1;
+const MAX_SCALE = 4;
+
+let renderScale = 1;
+
+function getRenderScale() {
+  return renderScale;
+}
+
+// The scale that renders a game shown at width × height CSS pixels at one canvas pixel per
+// screen pixel. Below 1× the browser shrinks the canvas instead; above 4× it stretches it.
+function scaleFor(width, height) {
+  const cssScale = Math.min(width / GAME_WIDTH, height / GAME_HEIGHT);
+  const scale = Phaser.Math.Clamp(cssScale * (window.devicePixelRatio || 1), MIN_SCALE, MAX_SCALE);
+  return Math.round(scale * SCALE_STEP) / SCALE_STEP;
+}
+
+// Picks the starting canvas size from the page element the game is about to fill.
+function initialCanvasSize(parent) {
+  renderScale = scaleFor(parent.clientWidth, parent.clientHeight);
+  return { width: GAME_WIDTH * renderScale, height: GAME_HEIGHT * renderScale };
+}
+
+// Each scene calls this at the top of create(): its camera shows exactly the game world.
+function fitCamera(scene) {
+  scene.cameras.main.setZoom(renderScale).centerOn(GAME_WIDTH / 2, GAME_HEIGHT / 2);
+}
+
+// Phaser's shake moves the view by intensity × canvas size × zoom², so dividing by zoom² keeps
+// every shake the same share of the screen at any render scale.
+function shakeCamera(scene, durationMs, intensity) {
+  const camera = scene.cameras.main;
+  camera.shake(durationMs, intensity / camera.zoom ** 2);
+}
+
+function updateTexts(objects) {
+  for (const object of objects) {
+    if (object instanceof Phaser.GameObjects.Text) object.setResolution(renderScale);
+    else if (object.list) updateTexts(object.list);
+  }
+}
+
+// When the window is resized or zoomed (or moves to a screen with another pixel density),
+// re-render at the new size: resize the canvas, refit every live scene's camera, re-render text.
+function trackDisplaySize(game) {
+  game.scale.on(Phaser.Scale.Events.RESIZE, (gameSize, baseSize, displaySize) => {
+    const next = scaleFor(displaySize.width, displaySize.height);
+    if (next === renderScale) return;
+    renderScale = next;
+    // Re-emits RESIZE, which returns early above now that renderScale matches.
+    game.scale.resize(GAME_WIDTH * next, GAME_HEIGHT * next);
+    for (const scene of game.scene.getScenes(false)) {
+      const sys = scene.sys;
+      if (!sys.isActive() && !sys.isPaused() && !sys.isSleeping()) continue;
+      fitCamera(scene);
+      updateTexts(scene.children.list);
+    }
+  });
+}
+
+__exports.getRenderScale = getRenderScale;
+__exports.initialCanvasSize = initialCanvasSize;
+__exports.fitCamera = fitCamera;
+__exports.shakeCamera = shakeCamera;
+__exports.trackDisplaySize = trackDisplaySize;
+},
 "src/ui/Hud.js": function (__exports) {
 'use strict';
 const { GAME_WIDTH, GAME_HEIGHT, FONT, DEPTH, ABILITIES, BOSS, MAX_LEVEL_PICKUP } = __require('src/config/constants.js');
 const { TIMED_ABILITIES } = __require('src/systems/AbilityManager.js');
+const { getRenderScale } = __require('src/systems/display.js');
 
 const METER = { x: 12, y: 30, width: 128, height: 8 };
 const BOSS_BAR = { x: 40, y: 68, width: 400, height: 8 };
@@ -2075,8 +2160,9 @@ const COLORS = {
   boss: BOSS.color,
 };
 
+// Text renders at the canvas's render scale (§4), so it stays sharp however large the game is shown.
 function textStyle(size, color = '#ffffff') {
-  return { fontFamily: FONT, fontSize: `${size}px`, color, fontStyle: 'bold' };
+  return { fontFamily: FONT, fontSize: `${size}px`, color, fontStyle: 'bold', resolution: getRenderScale() };
 }
 
 function formatTime(seconds) {
@@ -2386,6 +2472,7 @@ const Starfield = __require('src/systems/Starfield.js').default;
 const Sfx = __require('src/systems/Sfx.js').default;
 const { describeSecondary } = __require('src/systems/SecondaryManager.js');
 const { loadProfile, purchase, nextCost, rankOf, itemOwned, hasUltimate, nextIsUltimate } = __require('src/systems/profile.js');
+const { fitCamera } = __require('src/systems/display.js');
 const { textStyle, formatGold } = __require('src/ui/Hud.js');
 
 const CX = GAME_WIDTH / 2;
@@ -2417,6 +2504,7 @@ class HangarScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.starfield = new Starfield(this);
     this.sfx = new Sfx(this);
     this.profile = loadProfile();
@@ -2651,6 +2739,7 @@ const Starfield = __require('src/systems/Starfield.js').default;
 const Sfx = __require('src/systems/Sfx.js').default;
 const { loadProfile, runModifiers, bankRun } = __require('src/systems/profile.js');
 const Hud = __require('src/ui/Hud.js').default;
+const { fitCamera, shakeCamera } = __require('src/systems/display.js');
 
 // The 'flash' texture is a 64px circle (BootScene), so scale = radius / 32.
 const FLASH_TEXTURE_RADIUS = 32;
@@ -2661,6 +2750,7 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.profile = loadProfile();
     this.mods = runModifiers(this.profile);
 
@@ -3037,7 +3127,7 @@ class GameScene extends Phaser.Scene {
       return;
     }
     this.player.startInvulnerability();
-    this.cameras.main.shake(120, 0.006);
+    shakeCamera(this, 120, 0.006);
     this.sfx.playerHit();
     this.hud.floatText(this.player.x, this.player.y - 22, `-${lost} LVL`, '#ff6060');
   }
@@ -3108,7 +3198,7 @@ class GameScene extends Phaser.Scene {
   detonateNova() {
     const { x, y } = this.player;
     this.flash(x, y, ABILITIES.nova.color, 16, 500);
-    this.cameras.main.shake(250, 0.01);
+    shakeCamera(this, 250, 0.01);
     this.sfx.nova();
     // Regular enemies only — the Sentinel is immune — but every enemy bullet is cleared.
     for (const enemy of [...this.enemies.getChildren()]) {
@@ -3141,7 +3231,7 @@ class GameScene extends Phaser.Scene {
     this.explode(x, y, PLAYER.color, 24);
     this.explode(x, y, 0xffffff, 12);
     this.flash(x, y, PLAYER.color, 4, 500);
-    this.cameras.main.shake(300, 0.012);
+    shakeCamera(this, 300, 0.012);
     this.sfx.bigExplosion();
     this.spawner.pause();
 
@@ -3220,7 +3310,7 @@ class GameScene extends Phaser.Scene {
 
   bossExplosion(x, y) {
     this.flash(x, y, 0xffffff, 8, 700);
-    this.cameras.main.shake(500, 0.015);
+    shakeCamera(this, 500, 0.015);
     this.sfx.bigExplosion();
     for (let i = 0; i < EXPLOSION.bossBursts; i++) {
       this.time.delayedCall(i * EXPLOSION.bossBurstInterval, () => {
@@ -3898,6 +3988,7 @@ __exports.default = TractorBeam;
 "src/scenes/PauseScene.js": function (__exports) {
 'use strict';
 const { GAME_WIDTH, GAME_HEIGHT } = __require('src/config/constants.js');
+const { fitCamera } = __require('src/systems/display.js');
 const { textStyle } = __require('src/ui/Hud.js');
 
 class PauseScene extends Phaser.Scene {
@@ -3906,6 +3997,7 @@ class PauseScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6);
     this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20, 'PAUSED', textStyle(36, '#4de3ff')).setOrigin(0.5);
     this.add
@@ -3935,6 +4027,7 @@ __exports.default = PauseScene;
 'use strict';
 const { GAME_WIDTH, GAME_HEIGHT, DEPTH, TIMING } = __require('src/config/constants.js');
 const Starfield = __require('src/systems/Starfield.js').default;
+const { fitCamera } = __require('src/systems/display.js');
 const { textStyle, formatGold } = __require('src/ui/Hud.js');
 
 const CX = GAME_WIDTH / 2;
@@ -3954,6 +4047,7 @@ class GameOverScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.starfield = new Starfield(this);
     this.leaving = false;
     this.acceptingInput = false;

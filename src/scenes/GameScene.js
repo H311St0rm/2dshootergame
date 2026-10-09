@@ -18,6 +18,7 @@ import Starfield from '../systems/Starfield.js';
 import Sfx from '../systems/Sfx.js';
 import { loadProfile, runModifiers, bankRun } from '../systems/profile.js';
 import Hud from '../ui/Hud.js';
+import { fitCamera, shakeCamera } from '../systems/display.js';
 
 // The 'flash' texture is a 64px circle (BootScene), so scale = radius / 32.
 const FLASH_TEXTURE_RADIUS = 32;
@@ -28,6 +29,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.profile = loadProfile();
     this.mods = runModifiers(this.profile);
 
@@ -404,7 +406,7 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     this.player.startInvulnerability();
-    this.cameras.main.shake(120, 0.006);
+    shakeCamera(this, 120, 0.006);
     this.sfx.playerHit();
     this.hud.floatText(this.player.x, this.player.y - 22, `-${lost} LVL`, '#ff6060');
   }
@@ -475,7 +477,7 @@ export default class GameScene extends Phaser.Scene {
   detonateNova() {
     const { x, y } = this.player;
     this.flash(x, y, ABILITIES.nova.color, 16, 500);
-    this.cameras.main.shake(250, 0.01);
+    shakeCamera(this, 250, 0.01);
     this.sfx.nova();
     // Regular enemies only — the Sentinel is immune — but every enemy bullet is cleared.
     for (const enemy of [...this.enemies.getChildren()]) {
@@ -508,7 +510,7 @@ export default class GameScene extends Phaser.Scene {
     this.explode(x, y, PLAYER.color, 24);
     this.explode(x, y, 0xffffff, 12);
     this.flash(x, y, PLAYER.color, 4, 500);
-    this.cameras.main.shake(300, 0.012);
+    shakeCamera(this, 300, 0.012);
     this.sfx.bigExplosion();
     this.spawner.pause();
 
@@ -587,7 +589,7 @@ export default class GameScene extends Phaser.Scene {
 
   bossExplosion(x, y) {
     this.flash(x, y, 0xffffff, 8, 700);
-    this.cameras.main.shake(500, 0.015);
+    shakeCamera(this, 500, 0.015);
     this.sfx.bigExplosion();
     for (let i = 0; i < EXPLOSION.bossBursts; i++) {
       this.time.delayedCall(i * EXPLOSION.bossBurstInterval, () => {

@@ -8,6 +8,7 @@ import {
 } from '../systems/profile.js';
 import { buildVolley } from '../systems/WeaponManager.js';
 import { describeSecondary } from '../systems/SecondaryManager.js';
+import { fitCamera } from '../systems/display.js';
 import { textStyle, formatGold } from '../ui/Hud.js';
 
 const CX = GAME_WIDTH / 2;
@@ -31,6 +32,7 @@ export default class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    fitCamera(this);
     this.starfield = new Starfield(this);
     this.sfx = new Sfx(this);
     this.profile = loadProfile();

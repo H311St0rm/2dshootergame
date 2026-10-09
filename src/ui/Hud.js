@@ -1,5 +1,6 @@
 import { GAME_WIDTH, GAME_HEIGHT, FONT, DEPTH, ABILITIES, BOSS, MAX_LEVEL_PICKUP } from '../config/constants.js';
 import { TIMED_ABILITIES } from '../systems/AbilityManager.js';
+import { getRenderScale } from '../systems/display.js';
 
 const METER = { x: 12, y: 30, width: 128, height: 8 };
 const BOSS_BAR = { x: 40, y: 68, width: 400, height: 8 };
@@ -16,8 +17,9 @@ const COLORS = {
   boss: BOSS.color,
 };
 
+// Text renders at the canvas's render scale (§4), so it stays sharp however large the game is shown.
 export function textStyle(size, color = '#ffffff') {
-  return { fontFamily: FONT, fontSize: `${size}px`, color, fontStyle: 'bold' };
+  return { fontFamily: FONT, fontSize: `${size}px`, color, fontStyle: 'bold', resolution: getRenderScale() };
 }
 
 function formatTime(seconds) {
